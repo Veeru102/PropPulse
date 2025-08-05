@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* ------------------------------------------------------------------
+   Dark theme overrides for Property Details page elements wrapped in
+   the `dark-bg` utility class. This keeps the overrides scoped so that
+   other pages using light styles are not affected.
+------------------------------------------------------------------- */
+.dark-bg .bg-white { @apply bg-[#111827]; }
+.dark-bg .border-gray-200 { @apply border-gray-700; }
+.dark-bg .text-gray-900 { @apply text-white; }
+.dark-bg .text-gray-800 { @apply text-gray-200; }
+.dark-bg .text-gray-700 { @apply text-gray-300; }
+.dark-bg .text-gray-600 { @apply text-gray-400; }
+.dark-bg .text-gray-500 { @apply text-gray-400; }
+.dark-bg .bg-gray-50  { @apply bg-gray-800; }
+
+/* Badge background tweaks */
+.dark-bg .bg-blue-100  { @apply bg-blue-900; }
+.dark-bg .bg-green-100 { @apply bg-green-900; }
+.dark-bg .bg-yellow-100{ @apply bg-yellow-900; }
+.dark-bg .bg-purple-100{ @apply bg-purple-900; }
+.dark-bg .bg-indigo-100{ @apply bg-indigo-900; }
+.dark-bg .bg-red-100   { @apply bg-red-900; }
+
+/* Gradient overrides */
+.dark-bg .from-blue-50   { --tw-gradient-from:#1e3a8a; }
+.dark-bg .to-indigo-50   { --tw-gradient-to:#312e81; }
+.dark-bg .from-green-50  { --tw-gradient-from:#064e3b; }
+.dark-bg .to-teal-50     { --tw-gradient-to:#134e4a; }
+.dark-bg .from-yellow-50 { --tw-gradient-from:#713f12; }
+.dark-bg .to-orange-50   { --tw-gradient-to:#7c2d12; }
+.dark-bg .from-purple-50 { --tw-gradient-from:#4c1d95; }
+.dark-bg .to-pink-50     { --tw-gradient-to:#831843; }
+
+/* Darker borders for gradient cards */
+.dark-bg .border-blue-200   { @apply border-blue-800; }
+.dark-bg .border-green-200  { @apply border-green-800; }
+.dark-bg .border-yellow-200 { @apply border-yellow-800; }
+.dark-bg .border-purple-200 { @apply border-purple-800; }
+
+/* Form elements */
+.dark-bg input,
+.dark-bg textarea,
+.dark-bg select {
+  @apply bg-[#1f2937] text-white placeholder-gray-400 border-gray-600 focus:border-blue-500 focus:ring-blue-500;
+}
+
+.dark-bg input[type=range] {
+  @apply bg-gray-700;
+} 

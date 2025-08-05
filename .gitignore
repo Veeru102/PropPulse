@@ -1,0 +1,35 @@
+# Python
+.Python
+__pycache__
+*.pyc
+*.pyd
+*.pyo
+.env
+.venv
+venv/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IDEs
+.vscode/
+.idea/
+
+# Operating System Files
+.DS_Store
+
+# Logs and data
+*.log
+logs/
+backend/logs/
+backend/data/
+data/
+
+# Models
+models/
+
+# Others
+node_modules
+dist/
+build/
+*.egg-info/

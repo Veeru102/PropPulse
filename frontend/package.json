@@ -1,0 +1,67 @@
+{
+  "name": "proppulse-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@headlessui/react": "^1.7.17",
+    "@heroicons/react": "^2.0.18",
+    "@mapbox/mapbox-gl-geocoder": "^5.0.1",
+    "@mui/material": "^7.1.1",
+    "@tailwindcss/forms": "^0.5.7",
+    "@tanstack/react-query": "^5.80.6",
+    "@types/recharts": "^1.8.29",
+    "axios": "^1.6.2",
+    "chart.js": "^4.4.9",
+    "framer-motion": "^12.18.1",
+    "mapbox-gl": "^2.15.0",
+    "react": "^18.2.0",
+    "react-chartjs-2": "^5.3.0",
+    "react-circular-progressbar": "^2.2.0",
+    "react-dom": "^18.2.0",
+    "react-query": "^3.39.3",
+    "react-router-dom": "^6.20.1",
+    "react-scripts": "^5.0.1",
+    "recharts": "^2.15.3",
+    "typescript": "^4.9.5",
+    "web-vitals": "^2.1.4"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.17.17",
+    "@types/mapbox__mapbox-gl-geocoder": "^5.0.0",
+    "@types/mapbox-gl": "^2.7.21",
+    "@types/node": "^16.18.126",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.2.18",
+    "@types/react-router-dom": "^5.3.3",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.6"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "dev": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
