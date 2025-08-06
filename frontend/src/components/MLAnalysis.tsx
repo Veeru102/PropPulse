@@ -133,12 +133,11 @@ const MLAnalysis: React.FC<MLAnalysisProps> = ({ property }) => {
 
   // Render a colored progress bar with the numeric value shown for clarity and tooltip
   const renderProgressBar = (value: number, invert: boolean = false, tooltipText?: string) => {
-    // When invert=true we consider higher value more risky (red) so we invert color scale
     // Scale the value to a percentage (0-100)
-    const scaledValue = value * 100;
+    const scaledValue = Math.max(0, Math.min(100, value * 100));
     const pct = invert ? (100 - scaledValue) / 100 : scaledValue / 100;
 
-    const getGradientColor = (percentage: number, inverted: boolean) => {
+    const getBarColor = (percentage: number, inverted: boolean) => {
       const colors = [
         '#EF4444', // Red
         '#F97316', // Orange
@@ -187,7 +186,7 @@ const MLAnalysis: React.FC<MLAnalysisProps> = ({ property }) => {
       
       const interpolatedColor = lerpColor(startColor, endColor, segmentPct);
 
-      return `linear-gradient(90deg, ${interpolatedColor} 0%, ${interpolatedColor} ${clampedPercentage * 100}%, #2A2A2A ${clampedPercentage * 100}%)`;
+      return interpolatedColor;
     };
 
     return (
@@ -197,7 +196,7 @@ const MLAnalysis: React.FC<MLAnalysisProps> = ({ property }) => {
             className="h-2.5 rounded-full"
             style={{
               width: `${scaledValue}%`,
-              background: getGradientColor(pct, invert)
+              backgroundColor: getBarColor(pct, invert)
             }}
           ></div>
         </div>
@@ -1130,7 +1129,7 @@ const MLAnalysis: React.FC<MLAnalysisProps> = ({ property }) => {
     const irr = getLongTermIRR();
     
     return (
-      <div className={`${darkThemeStyles.card} p-6 border border-[#60A5FA] mb-6`}>
+      <div className={`${darkThemeStyles.card} p-6 border border-[#2A2A2A] mb-6`}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xl font-bold text-[#E4E4E7]">Investment Assumptions</h3>
           <button
@@ -1159,14 +1158,14 @@ const MLAnalysis: React.FC<MLAnalysisProps> = ({ property }) => {
                 highlightedAssumption === 'interestRate' ? 'border-[#60A5FA] bg-[#1A1A1A]' : ''
               }`}>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-[#A3A3A3] flex items-center">
+                  <label className="text-sm font-medium text-[#E4E4E7] flex items-center">
                     Interest Rate (%)
-                    <span className="ml-1 text-[#A3A3A3]" title="Used in mortgage calculations for Cash-on-Cash, IRR, and Breakeven.">ⓘ</span>
+                    <span className="ml-1 text-[#E4E4E7]" title="Used in mortgage calculations for Cash-on-Cash, IRR, and Breakeven.">ⓘ</span>
                   </label>
                   <input
                     type="number"
                     step="0.1"
-                    className="w-20 border border-gray-300 rounded px-2 py-1 text-sm"
+                    className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-[#E4E4E7] bg-transparent"
                     value={interestRate}
                     onChange={(e) => handleAssumptionChange('interestRate', Number(e.target.value))}
                   />
@@ -1188,14 +1187,14 @@ const MLAnalysis: React.FC<MLAnalysisProps> = ({ property }) => {
                 highlightedAssumption === 'ltvRatio' ? 'border-[#60A5FA] bg-[#1A1A1A]' : ''
               }`}>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-[#A3A3A3] flex items-center">
+                  <label className="text-sm font-medium text-[#E4E4E7] flex items-center">
                     LTV Ratio (%)
-                    <span className="ml-1 text-[#A3A3A3]" title="Determines down payment and loan amount for mortgage calculations.">ⓘ</span>
+                    <span className="ml-1 text-[#E4E4E7]" title="Determines down payment and loan amount for mortgage calculations.">ⓘ</span>
                   </label>
                   <input
                     type="number"
                     step="1"
-                    className="w-20 border border-gray-300 rounded px-2 py-1 text-sm"
+                    className="w-20 border border-gray-300 rounded px-2 py-1 text-sm text-[#E4E4E7] bg-transparent"
                     value={ltvRatio}
                     onChange={(e) => handleAssumptionChange('ltvRatio', Number(e.target.value))}
                   />
@@ -1215,14 +1214,14 @@ const MLAnalysis: React.FC<MLAnalysisProps> = ({ property }) => {
                 isChanged('appreciationRate') ? 'border-[#60A5FA]' :
                 highlightedAssumption === 'appreciationRate' ? 'border-[#60A5FA] bg-[#1A1A1A]' : ''
               }`}>
-                <label className="text-sm font-medium text-[#A3A3A3] flex items-center mb-2">
+                <label className="text-sm font-medium text-[#E4E4E7] flex items-center mb-2">
                   Appreciation Rate (%/yr)
-                  <span className="ml-1 text-[#A3A3A3]" title="Primary driver for IRR and Price Forecast. If unchanged, system forecast is used.">ⓘ</span>
+                  <span className="ml-1 text-[#E4E4E7]" title="Primary driver for IRR and Price Forecast. If unchanged, system forecast is used.">ⓘ</span>
                 </label>
                 <input
                   type="number"
                   step="0.1"
-                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-[#E4E4E7] bg-transparent"
                   value={assumptions.appreciationRate}
                   onChange={(e) => handleAssumptionChange('appreciationRate', Number(e.target.value))}
                 />
@@ -1233,14 +1232,14 @@ const MLAnalysis: React.FC<MLAnalysisProps> = ({ property }) => {
                 isChanged('monthlyRentPct') ? 'border-[#60A5FA]' :
                 highlightedAssumption === 'monthlyRentPct' ? 'border-[#60A5FA] bg-[#1A1A1A]' : ''
               }`}>
-                <label className="text-sm font-medium text-[#A3A3A3] flex items-center mb-2">
+                <label className="text-sm font-medium text-[#E4E4E7] flex items-center mb-2">
                   Monthly Rent (% of value)
-                  <span className="ml-1 text-[#A3A3A3]" title="Used in rental income calculations across metrics.">ⓘ</span>
+                  <span className="ml-1 text-[#E4E4E7]" title="Used in rental income calculations across metrics.">ⓘ</span>
                 </label>
                 <input
                   type="number"
                   step="0.1"
-                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-[#E4E4E7] bg-transparent"
                   value={assumptions.monthlyRentPct}
                   onChange={(e) => handleAssumptionChange('monthlyRentPct', Number(e.target.value))}
                 />
@@ -1251,13 +1250,13 @@ const MLAnalysis: React.FC<MLAnalysisProps> = ({ property }) => {
                 isChanged('propertyTaxRate') ? 'border-[#60A5FA]' :
                 highlightedAssumption === 'propertyTaxRate' ? 'border-[#60A5FA] bg-[#1A1A1A]' : ''
               }`}>
-                <label className="text-sm font-medium text-[#A3A3A3] flex items-center mb-2">
+                <label className="text-sm font-medium text-[#E4E4E7] flex items-center mb-2">
                   Property Tax Rate (%/yr)
                 </label>
                 <input
                   type="number"
                   step="0.1"
-                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-[#E4E4E7] bg-transparent"
                   value={assumptions.propertyTaxRate}
                   onChange={(e) => handleAssumptionChange('propertyTaxRate', Number(e.target.value))}
                 />
@@ -1267,13 +1266,13 @@ const MLAnalysis: React.FC<MLAnalysisProps> = ({ property }) => {
                 isChanged('insuranceRate') ? 'border-[#60A5FA]' :
                 highlightedAssumption === 'insuranceRate' ? 'border-[#60A5FA] bg-[#1A1A1A]' : ''
               }`}>
-                <label className="text-sm font-medium text-[#A3A3A3] flex items-center mb-2">
+                <label className="text-sm font-medium text-[#E4E4E7] flex items-center mb-2">
                   Insurance Rate (%/yr)
                 </label>
                 <input
                   type="number"
                   step="0.1"
-                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-[#E4E4E7] bg-transparent"
                   value={assumptions.insuranceRate}
                   onChange={(e) => handleAssumptionChange('insuranceRate', Number(e.target.value))}
                 />
@@ -1283,13 +1282,13 @@ const MLAnalysis: React.FC<MLAnalysisProps> = ({ property }) => {
                 isChanged('maintenanceRate') ? 'border-[#60A5FA]' :
                 highlightedAssumption === 'maintenanceRate' ? 'border-[#60A5FA] bg-[#1A1A1A]' : ''
               }`}>
-                <label className="text-sm font-medium text-[#A3A3A3] flex items-center mb-2">
+                <label className="text-sm font-medium text-[#E4E4E7] flex items-center mb-2">
                   Maintenance Rate (%/yr)
                 </label>
                 <input
                   type="number"
                   step="0.1"
-                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-[#E4E4E7] bg-transparent"
                   value={assumptions.maintenanceRate}
                   onChange={(e) => handleAssumptionChange('maintenanceRate', Number(e.target.value))}
                 />
@@ -1299,13 +1298,13 @@ const MLAnalysis: React.FC<MLAnalysisProps> = ({ property }) => {
                 isChanged('managementRate') ? 'border-[#60A5FA]' :
                 highlightedAssumption === 'managementRate' ? 'border-[#60A5FA] bg-[#1A1A1A]' : ''
               }`}>
-                <label className="text-sm font-medium text-[#A3A3A3] flex items-center mb-2">
+                <label className="text-sm font-medium text-[#E4E4E7] flex items-center mb-2">
                   Management Fee (% of rent)
                 </label>
                 <input
                   type="number"
                   step="0.1"
-                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm"
+                  className="w-full border border-gray-300 rounded px-2 py-1 text-sm text-[#E4E4E7] bg-transparent"
                   value={assumptions.managementRate}
                   onChange={(e) => handleAssumptionChange('managementRate', Number(e.target.value))}
                 />
