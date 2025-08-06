@@ -28,6 +28,10 @@ data/
 # Models
 models/
 
+# Executables/Installers
+*.sh
+*.exe
+
 # Others
 node_modules
 dist/
