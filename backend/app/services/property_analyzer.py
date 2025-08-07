@@ -728,10 +728,8 @@ class PropertyAnalyzer:
             # Debt service coverage ratio
             metrics['dscr'] = annual_rent / annual_mortgage if annual_mortgage > 0 else float('inf')
             
-            # Days-on-market ratio (property DOM vs market median) – needed by UI
-            prop_dom = property_data.get('days_on_market', market_data.get('median_dom', 30)) or 1
-            market_dom = market_data.get('median_dom', 30) or 1
-            metrics['dom_ratio'] = prop_dom / market_dom
+            # Improved Days-on-market ratio calculation with validation
+            metrics['dom_ratio'] = self._calculate_dom_ratio(property_data, market_data)
             
             # Calculate flip ROI
             renovation_cost = price * 0.15  # Assume 15% of property value for renovations
@@ -757,6 +755,164 @@ class PropertyAnalyzer:
         except Exception as e:
             logger.error(f"Error calculating investment metrics: {str(e)}")
             raise
+            
+    def _calculate_dom_ratio(self, property_data: Dict[str, Any], market_data: Dict[str, Any]) -> float:
+        """Calculate DOM ratio with proper validation and error handling."""
+        try:
+            # Get property DOM with validation
+            prop_dom = property_data.get('days_on_market')
+            if prop_dom is None or prop_dom < 0:
+                logger.warning(f"Invalid property DOM value: {prop_dom}")
+                return 1.0  # Neutral value for invalid data
+                
+            # Get market median DOM with validation - try multiple field names
+            market_dom = (
+                market_data.get('median_dom') or 
+                market_data.get('median_days_on_market') or
+                market_data.get('avg_days_on_market')
+            )
+            
+            if market_dom is None or market_dom <= 0:
+                logger.warning(f"Invalid market DOM value: {market_dom}")
+                # Use a reasonable default based on market conditions
+                market_dom = 45  # Industry average for balanced market
+                
+            # Validate reasonable ranges and log warnings
+            if prop_dom > 365:  # Flag extremely old listings
+                logger.warning(f"Property DOM > 1 year ({prop_dom} days) - may indicate stale listing")
+            if market_dom > 180:  # Flag unusual market conditions
+                logger.warning(f"Market median DOM > 6 months ({market_dom} days) - unusual market conditions")
+                
+            # Calculate ratio with bounds
+            dom_ratio = prop_dom / market_dom
+            
+            # Normalize to reasonable range (0.1 to 10) to prevent extreme outliers
+            dom_ratio = np.clip(dom_ratio, 0.1, 10.0)
+            
+            logger.debug(f"DOM ratio calculated: property={prop_dom}, market={market_dom}, ratio={dom_ratio:.2f}")
+            return float(dom_ratio)
+            
+        except Exception as e:
+            logger.error(f"Error calculating DOM ratio: {str(e)}")
+            return 1.0  # Return neutral value on error
+            
+    def _calculate_price_trend(self, market_data: Dict[str, Any]) -> float:
+        """Calculate price trend using proper historical analysis with smoothing and normalization."""
+        try:
+            # Try to get historical data from different sources
+            historical_data = market_data.get('historical_data', {})
+            
+            price_data = None
+            price_dates = None
+            
+            if historical_data:
+                # From structured historical data
+                median_price_data = historical_data.get('median_listing_price', {})
+                if isinstance(median_price_data, dict) and 'values' in median_price_data:
+                    price_data = median_price_data.get('values', [])
+                    price_dates = median_price_data.get('dates', [])
+                    
+            # If no structured historical data, try direct fields
+            if not price_data:
+                price_data = market_data.get('price_history', []) or market_data.get('historical_prices', [])
+                
+            # If still no data, return neutral
+            if not price_data or len(price_data) < 2:
+                logger.debug("No historical price data available for trend calculation")
+                return 0.0
+                
+            # Convert to pandas Series for easier manipulation
+            prices_series = pd.Series([float(p) for p in price_data if p is not None and pd.notna(p)])
+            
+            if len(prices_series) < 2:
+                logger.debug("Insufficient valid price data for trend calculation")
+                return 0.0
+                
+            # Apply 3-month moving average smoothing if we have enough data
+            if len(prices_series) >= 3:
+                smoothed_prices = prices_series.rolling(window=3, min_periods=1).mean()
+            else:
+                smoothed_prices = prices_series
+                
+            # Calculate different time period trends
+            latest_price = smoothed_prices.iloc[-1]
+            
+            # 12-month trend
+            if len(smoothed_prices) >= 12:
+                year_ago_price = smoothed_prices.iloc[-12]
+                trend_period = 12
+                if year_ago_price <= 0:
+                    logger.warning(f"Invalid historical price value at 12-month mark: {year_ago_price}")
+                    return 0.0
+                price_change_pct = ((latest_price - year_ago_price) / year_ago_price) * 100
+            # 6-month trend (fallback)
+            elif len(smoothed_prices) >= 6:
+                year_ago_price = smoothed_prices.iloc[-6]
+                trend_period = 6
+                if year_ago_price <= 0:
+                    logger.warning(f"Invalid historical price value at 6-month mark: {year_ago_price}")
+                    return 0.0
+                # Annualize the 6-month trend correctly
+                # Calculate monthly growth rate, then annualize
+                monthly_growth_rate = (latest_price / year_ago_price)**(1/6) - 1
+                price_change_pct = ((1 + monthly_growth_rate)**12 - 1) * 100
+            # 3-month trend (last resort)
+            elif len(smoothed_prices) >= 3:
+                year_ago_price = smoothed_prices.iloc[-3]
+                trend_period = 3
+                if year_ago_price <= 0:
+                    logger.warning(f"Invalid historical price value at 3-month mark: {year_ago_price}")
+                    return 0.0
+                # Annualize the 3-month trend correctly
+                # Calculate monthly growth rate, then annualize
+                monthly_growth_rate = (latest_price / year_ago_price)**(1/3) - 1
+                price_change_pct = ((1 + monthly_growth_rate)**12 - 1) * 100
+            else:
+                # Use first vs last, and annualize for short periods
+                year_ago_price = smoothed_prices.iloc[0]
+                trend_period = len(smoothed_prices)
+                if year_ago_price <= 0 or trend_period == 0:
+                    logger.warning(f"Invalid historical price value or period in fallback: {year_ago_price}, {trend_period}")
+                    return 0.0
+                # Annualize for periods less than 3 months
+                monthly_growth_rate = (latest_price / year_ago_price)**(1/trend_period) - 1
+                price_change_pct = ((1 + monthly_growth_rate)**12 - 1) * 100
+
+            # Normalize to -1 to 1 range, with scaling for confidence
+            normalized_trend = self._get_scaled_normalized_trend(price_change_pct, trend_period)
+            
+            logger.debug(f"Calculated price trend: {price_change_pct:.2f}% over {trend_period} months, normalized to {normalized_trend:.2f}")
+            return normalized_trend
+            
+        except Exception as e:
+            logger.error(f"Error in _calculate_price_trend: {e}", exc_info=True)
+            return 0.0
+
+    def _get_scaled_normalized_trend(self, price_change_pct: float, trend_period: int) -> float:
+        """Scales trend by period length and normalizes to a -1 to 1 range."""
+        
+        # Confidence scaling factor based on the period length (in months)
+        # A 12-month period has full confidence (1.0)
+        # A 3-month period has less confidence (e.g., 0.75)
+        # A 1-month period has low confidence (e.g., 0.5)
+        if trend_period >= 12:
+            confidence_scale = 1.0
+        elif trend_period >= 6:
+            confidence_scale = 0.85
+        elif trend_period >= 3:
+            confidence_scale = 0.75
+        else:
+            confidence_scale = 0.5 + 0.25 * ((trend_period - 1) / 2) # Scale from 0.5 to 0.75 for 1-2 months
+
+        # Apply confidence scaling
+        scaled_trend_pct = price_change_pct * confidence_scale
+        
+        # Normalize to -1 to 1 range (e.g., 20% annual change as normalization factor)
+        # This means a 20% scaled trend will result in a normalized value of 1.0
+        normalization_factor = 20.0
+        normalized_trend = np.clip(scaled_trend_pct / normalization_factor, -1.0, 1.0)
+        
+        return normalized_trend
             
     def _calculate_risk_metrics(self, property_data: Dict[str, Any], market_data: Dict[str, Any]) -> Dict[str, Any]:
         """Calculate risk assessment metrics using ML models with heuristic fallback.
@@ -831,72 +987,76 @@ class PropertyAnalyzer:
                 }
             
             # Market risk - try ML first, fallback to heuristic
-            ml_market_risk = self._predict_with_ml_model('market_risk', ml_features)
-            if ml_market_risk is not None:
-                metrics['market_risk'] = ml_market_risk
-                metrics_source['market_risk'] = 'ml_model'
-                logger.debug("Using ML prediction for market_risk")
+            # ML temporarily disabled
+            # ml_market_risk = self._predict_with_ml_model('market_risk', ml_features)
+            # if ml_market_risk is not None:
+            #     metrics['market_risk'] = ml_market_risk
+            #     metrics_source['market_risk'] = 'ml_model'
+            #     logger.debug("Using ML prediction for market_risk")
+            # else:
+            if settings.ML_MODEL_SETTINGS['USE_NEUTRAL_FALLBACK']:
+                metrics['market_risk'] = settings.ML_MODEL_SETTINGS['NEUTRAL_FALLBACK_VALUE']
+                metrics_source['market_risk'] = 'neutral_fallback'
+                logger.debug("Using neutral fallback for market_risk")
             else:
-                if settings.ML_MODEL_SETTINGS['USE_NEUTRAL_FALLBACK']:
-                    metrics['market_risk'] = settings.ML_MODEL_SETTINGS['NEUTRAL_FALLBACK_VALUE']
-                    metrics_source['market_risk'] = 'neutral_fallback'
-                    logger.debug("Using neutral fallback for market_risk")
-                else:
-                    metrics['market_risk'] = self._calculate_market_risk_heuristic(market_data)
-                    metrics_source['market_risk'] = 'heuristic_fallback'
-                    logger.debug("Using heuristic fallback for market_risk")
+                metrics['market_risk'] = self._calculate_market_risk_heuristic(market_data)
+                metrics_source['market_risk'] = 'heuristic_fallback'
+                logger.debug("Using heuristic fallback for market_risk")
             
             # Property risk - try ML first, fallback to heuristic
-            ml_property_risk = self._predict_with_ml_model('property_risk', ml_features)
-            if ml_property_risk is not None:
-                metrics['property_risk'] = ml_property_risk
-                metrics_source['property_risk'] = 'ml_model'
-                logger.debug("Using ML prediction for property_risk")
+            # ML temporarily disabled
+            # ml_property_risk = self._predict_with_ml_model('property_risk', ml_features)
+            # if ml_property_risk is not None:
+            #     metrics['property_risk'] = ml_property_risk
+            #     metrics_source['property_risk'] = 'ml_model'
+            #     logger.debug("Using ML prediction for property_risk")
+            # else:
+            if settings.ML_MODEL_SETTINGS['USE_NEUTRAL_FALLBACK']:
+                metrics['property_risk'] = settings.ML_MODEL_SETTINGS['NEUTRAL_FALLBACK_VALUE']
+                metrics_source['property_risk'] = 'neutral_fallback'
+                logger.debug("Using neutral fallback for property_risk")
             else:
-                if settings.ML_MODEL_SETTINGS['USE_NEUTRAL_FALLBACK']:
-                    metrics['property_risk'] = settings.ML_MODEL_SETTINGS['NEUTRAL_FALLBACK_VALUE']
-                    metrics_source['property_risk'] = 'neutral_fallback'
-                    logger.debug("Using neutral fallback for property_risk")
-                else:
-                    metrics['property_risk'] = self._calculate_property_risk_heuristic(property_data)
-                    metrics_source['property_risk'] = 'heuristic_fallback'
-                    logger.debug("Using heuristic fallback for property_risk")
+                metrics['property_risk'] = self._calculate_property_risk_heuristic(property_data)
+                metrics_source['property_risk'] = 'heuristic_fallback'
+                logger.debug("Using heuristic fallback for property_risk")
             
             # Location risk - try ML first, fallback to heuristic
-            ml_location_risk = self._predict_with_ml_model('location_risk', ml_features)
-            if ml_location_risk is not None:
-                metrics['location_risk'] = ml_location_risk
-                metrics_source['location_risk'] = 'ml_model'
-                logger.debug("Using ML prediction for location_risk")
+            # ML temporarily disabled
+            # ml_location_risk = self._predict_with_ml_model('location_risk', ml_features)
+            # if ml_location_risk is not None:
+            #     metrics['location_risk'] = ml_location_risk
+            #     metrics_source['location_risk'] = 'ml_model'
+            #     logger.debug("Using ML prediction for location_risk")
+            # else:
+            if settings.ML_MODEL_SETTINGS['USE_NEUTRAL_FALLBACK']:
+                metrics['location_risk'] = settings.ML_MODEL_SETTINGS['NEUTRAL_FALLBACK_VALUE']
+                metrics_source['location_risk'] = 'neutral_fallback'
+                logger.debug("Using neutral fallback for location_risk")
             else:
-                if settings.ML_MODEL_SETTINGS['USE_NEUTRAL_FALLBACK']:
-                    metrics['location_risk'] = settings.ML_MODEL_SETTINGS['NEUTRAL_FALLBACK_VALUE']
-                    metrics_source['location_risk'] = 'neutral_fallback'
-                    logger.debug("Using neutral fallback for location_risk")
-                else:
-                    metrics['location_risk'] = self._calculate_location_risk_heuristic(property_data)
-                    metrics_source['location_risk'] = 'heuristic_fallback'
-                    logger.debug("Using heuristic fallback for location_risk")
+                metrics['location_risk'] = self._calculate_location_risk_heuristic(property_data)
+                metrics_source['location_risk'] = 'heuristic_fallback'
+                logger.debug("Using heuristic fallback for location_risk")
             
             # Overall risk - try ML first, fallback to weighted average
-            ml_overall_risk = self._predict_with_ml_model('overall_risk', ml_features)
-            if ml_overall_risk is not None:
-                metrics['overall_risk'] = ml_overall_risk
-                metrics_source['overall_risk'] = 'ml_model'
-                logger.debug("Using ML prediction for overall_risk")
+            # ML temporarily disabled
+            # ml_overall_risk = self._predict_with_ml_model('overall_risk', ml_features)
+            # if ml_overall_risk is not None:
+            #     metrics['overall_risk'] = ml_overall_risk
+            #     metrics_source['overall_risk'] = 'ml_model'
+            #     logger.debug("Using ML prediction for overall_risk")
+            # else:
+            if settings.ML_MODEL_SETTINGS['USE_NEUTRAL_FALLBACK']:
+                metrics['overall_risk'] = settings.ML_MODEL_SETTINGS['NEUTRAL_FALLBACK_VALUE']
+                metrics_source['overall_risk'] = 'neutral_fallback'
+                logger.debug("Using neutral fallback for overall_risk")
             else:
-                if settings.ML_MODEL_SETTINGS['USE_NEUTRAL_FALLBACK']:
-                    metrics['overall_risk'] = settings.ML_MODEL_SETTINGS['NEUTRAL_FALLBACK_VALUE']
-                    metrics_source['overall_risk'] = 'neutral_fallback'
-                    logger.debug("Using neutral fallback for overall_risk")
-                else:
-                    metrics['overall_risk'] = (
-                        metrics['market_risk'] * 0.4 +
-                        metrics['property_risk'] * 0.3 +
-                        metrics['location_risk'] * 0.3
-                    )
-                    metrics_source['overall_risk'] = 'weighted_average'
-                    logger.debug("Using weighted average for overall_risk")
+                metrics['overall_risk'] = (
+                    metrics['market_risk'] * 0.4 +
+                    metrics['property_risk'] * 0.3 +
+                    metrics['location_risk'] * 0.3
+                )
+                metrics_source['overall_risk'] = 'weighted_average'
+                logger.debug("Using weighted average for overall_risk")
             
             # Log detailed metrics information
             logger.info(f"Risk metrics: market={metrics['market_risk']:.4f} ({metrics_source.get('market_risk', 'unknown')}), "
@@ -1139,7 +1299,8 @@ class PropertyAnalyzer:
                 'market_health': 0.0,
                 'market_momentum': 0.0,
                 'market_stability': 0.0,
-                'price_growth_rate': 0.0
+                'price_growth_rate': 0.0,
+                'price_trend': 0.0  # Add price trend metric
             }
             metrics_source = {}  # Track the source of each metric (ML or heuristic)
             
@@ -1151,11 +1312,13 @@ class PropertyAnalyzer:
                     'market_momentum': 0.5,
                     'market_stability': 0.5,
                     'price_growth_rate': 0.0,
+                    'price_trend': 0.0,
                     'metrics_source': {
                         'market_health': 'neutral_fallback',
                         'market_momentum': 'neutral_fallback',
                         'market_stability': 'neutral_fallback',
-                        'price_growth_rate': 'neutral_fallback'
+                        'price_growth_rate': 'neutral_fallback',
+                        'price_trend': 'neutral_fallback'
                     }
                 }
                 
@@ -1196,77 +1359,90 @@ class PropertyAnalyzer:
                 # Calculate price growth rate from market momentum and stability
                 metrics['price_growth_rate'] = metrics['market_momentum'] * metrics['market_stability'] * 0.1  # 10% max annual growth
                 
+                # Calculate price trend using historical data
+                metrics['price_trend'] = self._calculate_price_trend(market_data)
+                
                 return {
                     'market_health': metrics['market_health'],
                     'market_momentum': metrics['market_momentum'],
                     'market_stability': metrics['market_stability'],
                     'price_growth_rate': metrics['price_growth_rate'],
+                    'price_trend': metrics['price_trend'],
                     'metrics_source': {
                         'market_health': 'heuristic_fallback',
                         'market_momentum': 'heuristic_fallback',
                         'market_stability': 'heuristic_fallback',
-                        'price_growth_rate': 'heuristic_fallback'
+                        'price_growth_rate': 'heuristic_fallback',
+                        'price_trend': 'heuristic_fallback'
                     }
                 }
                 
             # Market health - try ML first, fallback to heuristic
-            ml_market_health = self._predict_with_ml_model('market_health', ml_features)
-            if ml_market_health is not None:
-                metrics['market_health'] = ml_market_health
-                metrics_source['market_health'] = 'ml_model'
-                logger.debug("Using ML prediction for market_health")
+            # ML temporarily disabled
+            # ml_market_health = self._predict_with_ml_model('market_health', ml_features)
+            # if ml_market_health is not None:
+            #     metrics['market_health'] = ml_market_health
+            #     metrics_source['market_health'] = 'ml_model'
+            #     logger.debug("Using ML prediction for market_health")
+            # else:
+            if settings.ML_MODEL_SETTINGS['USE_NEUTRAL_FALLBACK']:
+                metrics['market_health'] = settings.ML_MODEL_SETTINGS['NEUTRAL_FALLBACK_VALUE']
+                metrics_source['market_health'] = 'neutral_fallback'
+                logger.debug("Using neutral fallback for market_health")
             else:
-                if settings.ML_MODEL_SETTINGS['USE_NEUTRAL_FALLBACK']:
-                    metrics['market_health'] = settings.ML_MODEL_SETTINGS['NEUTRAL_FALLBACK_VALUE']
-                    metrics_source['market_health'] = 'neutral_fallback'
-                    logger.debug("Using neutral fallback for market_health")
-                else:
-                    metrics['market_health'] = self._calculate_market_health_heuristic(market_data)
-                    metrics_source['market_health'] = 'heuristic_fallback'
-                    logger.debug("Using heuristic fallback for market_health")
+                metrics['market_health'] = self._calculate_market_health_heuristic(market_data)
+                metrics_source['market_health'] = 'heuristic_fallback'
+                logger.debug("Using heuristic fallback for market_health")
             
             # Market momentum - try ML first, fallback to heuristic
-            ml_market_momentum = self._predict_with_ml_model('market_momentum', ml_features)
-            if ml_market_momentum is not None:
-                metrics['market_momentum'] = ml_market_momentum
-                metrics_source['market_momentum'] = 'ml_model'
-                logger.debug("Using ML prediction for market_momentum")
+            # ML temporarily disabled
+            # ml_market_momentum = self._predict_with_ml_model('market_momentum', ml_features)
+            # if ml_market_momentum is not None:
+            #     metrics['market_momentum'] = ml_market_momentum
+            #     metrics_source['market_momentum'] = 'ml_model'
+            #     logger.debug("Using ML prediction for market_momentum")
+            # else:
+            if settings.ML_MODEL_SETTINGS['USE_NEUTRAL_FALLBACK']:
+                metrics['market_momentum'] = settings.ML_MODEL_SETTINGS['NEUTRAL_FALLBACK_VALUE']
+                metrics_source['market_momentum'] = 'neutral_fallback'
+                logger.debug("Using neutral fallback for market_momentum")
             else:
-                if settings.ML_MODEL_SETTINGS['USE_NEUTRAL_FALLBACK']:
-                    metrics['market_momentum'] = settings.ML_MODEL_SETTINGS['NEUTRAL_FALLBACK_VALUE']
-                    metrics_source['market_momentum'] = 'neutral_fallback'
-                    logger.debug("Using neutral fallback for market_momentum")
-                else:
-                    metrics['market_momentum'] = self._calculate_market_momentum_heuristic(market_data)
-                    metrics_source['market_momentum'] = 'heuristic_fallback'
-                    logger.debug("Using heuristic fallback for market_momentum")
+                metrics['market_momentum'] = self._calculate_market_momentum_heuristic(market_data)
+                metrics_source['market_momentum'] = 'heuristic_fallback'
+                logger.debug("Using heuristic fallback for market_momentum")
             
             # Market stability - try ML first, fallback to heuristic
-            ml_market_stability = self._predict_with_ml_model('market_stability', ml_features)
-            if ml_market_stability is not None:
-                metrics['market_stability'] = ml_market_stability
-                metrics_source['market_stability'] = 'ml_model'
-                logger.debug("Using ML prediction for market_stability")
+            # ML temporarily disabled
+            # ml_market_stability = self._predict_with_ml_model('market_stability', ml_features)
+            # if ml_market_stability is not None:
+            #     metrics['market_stability'] = ml_market_stability
+            #     metrics_source['market_stability'] = 'ml_model'
+            #     logger.debug("Using ML prediction for market_stability")
+            # else:
+            if settings.ML_MODEL_SETTINGS['USE_NEUTRAL_FALLBACK']:
+                metrics['market_stability'] = settings.ML_MODEL_SETTINGS['NEUTRAL_FALLBACK_VALUE']
+                metrics_source['market_stability'] = 'neutral_fallback'
+                logger.debug("Using neutral fallback for market_stability")
             else:
-                if settings.ML_MODEL_SETTINGS['USE_NEUTRAL_FALLBACK']:
-                    metrics['market_stability'] = settings.ML_MODEL_SETTINGS['NEUTRAL_FALLBACK_VALUE']
-                    metrics_source['market_stability'] = 'neutral_fallback'
-                    logger.debug("Using neutral fallback for market_stability")
-                else:
-                    metrics['market_stability'] = self._calculate_market_stability_heuristic(market_data)
-                    metrics_source['market_stability'] = 'heuristic_fallback'
-                    logger.debug("Using heuristic fallback for market_stability")
+                metrics['market_stability'] = self._calculate_market_stability_heuristic(market_data)
+                metrics_source['market_stability'] = 'heuristic_fallback'
+                logger.debug("Using heuristic fallback for market_stability")
             
             # Calculate price growth rate based on momentum and stability
             price_growth_rate = metrics['market_momentum'] * metrics['market_stability'] * 0.1  # 10% max annual growth
             metrics['price_growth_rate'] = price_growth_rate
             metrics_source['price_growth_rate'] = 'weighted_average'
             
+            # Calculate price trend using historical data
+            metrics['price_trend'] = self._calculate_price_trend(market_data)
+            metrics_source['price_trend'] = 'historical_analysis'
+            
             # Log detailed metrics information
             logger.info(f"Market metrics: health={metrics['market_health']:.4f} ({metrics_source.get('market_health', 'unknown')}), "
                       f"momentum={metrics['market_momentum']:.4f} ({metrics_source.get('market_momentum', 'unknown')}), "
                       f"stability={metrics['market_stability']:.4f} ({metrics_source.get('market_stability', 'unknown')}), "
-                      f"growth_rate={metrics['price_growth_rate']:.4f} ({metrics_source.get('price_growth_rate', 'unknown')})")
+                      f"growth_rate={metrics['price_growth_rate']:.4f} ({metrics_source.get('price_growth_rate', 'unknown')}), "
+                      f"price_trend={metrics['price_trend']:.4f} ({metrics_source.get('price_trend', 'unknown')})")
             
             # Return in new schema format
             return {
@@ -1274,6 +1450,7 @@ class PropertyAnalyzer:
                 'market_momentum': metrics['market_momentum'],
                 'market_stability': metrics['market_stability'],
                 'price_growth_rate': metrics['price_growth_rate'],
+                'price_trend': metrics['price_trend'],
                 'metrics_source': metrics_source
             }
             
@@ -1287,11 +1464,13 @@ class PropertyAnalyzer:
                     'market_momentum': neutral,
                     'market_stability': neutral,
                     'price_growth_rate': neutral * 0.1,  # 10% max annual growth
+                    'price_trend': 0.0,  # Neutral price trend
                     'metrics_source': {
                         'market_health': 'error_fallback',
                         'market_momentum': 'error_fallback',
                         'market_stability': 'error_fallback',
-                        'price_growth_rate': 'error_fallback'
+                        'price_growth_rate': 'error_fallback',
+                        'price_trend': 'error_fallback'
                     }
                 }
             else:
@@ -1300,11 +1479,13 @@ class PropertyAnalyzer:
                     'market_momentum': 0.25,
                     'market_stability': 0.45,
                     'price_growth_rate': 0.03,  # 3% conservative growth
+                    'price_trend': 0.0,  # Neutral price trend
                     'metrics_source': {
                         'market_health': 'error_fallback',
                         'market_momentum': 'error_fallback',
                         'market_stability': 'error_fallback',
-                        'price_growth_rate': 'error_fallback'
+                        'price_growth_rate': 'error_fallback',
+                        'price_trend': 'error_fallback'
                     }
                 }
     

@@ -205,6 +205,10 @@ async def get_properties(
                 if "error" not in market_trends:
                     transformed_property['market_trends'] = market_trends
                 
+                # Add historical data to market_data if available
+                if "error" not in market_trends and 'market_data' in market_trends and 'historical_data' in market_trends['market_data']:
+                    market_data['historical_data'] = market_trends['market_data']['historical_data']
+                
                 # Analyze the property with both property_data and market_data
                 analysis = property_analyzer.analyze_property(transformed_property, market_data)
                 

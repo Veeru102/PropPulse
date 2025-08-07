@@ -18,7 +18,7 @@ class MarketMetricsResponse(BaseModel):
     market_momentum: float = Field(..., description="Market momentum/trend score")
     market_stability: float = Field(..., description="Market stability score")
     price_growth_rate: float = Field(..., description="Annualized price growth rate")
-    metrics_source: Dict[str, Literal["ml_model", "heuristic_fallback", "neutral_fallback", "weighted_average", "error_fallback"]] = Field(
+    metrics_source: Dict[str, Literal["ml_model", "heuristic_fallback", "neutral_fallback", "weighted_average", "error_fallback", "historical_analysis"]] = Field(
         ..., 
         description="Source of each metric calculation"
     )

@@ -194,6 +194,85 @@ class MarketDataService:
         except Exception as e:
             logger.error(f"Error downloading CSV from {url}: {str(e)}")
             return pd.DataFrame()  # Return empty DataFrame on error
+            
+    def _process_historical_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Process historical data with proper cleaning, validation, and smoothing."""
+        try:
+            if df.empty:
+                return df
+                
+            # Make a copy to avoid modifying original
+            processed_df = df.copy()
+            
+            # Convert date column to datetime if it exists
+            if 'month_date_yyyymm' in processed_df.columns:
+                processed_df['month_date_yyyymm'] = pd.to_numeric(processed_df['month_date_yyyymm'], errors='coerce')
+                # Sort by date
+                processed_df = processed_df.sort_values('month_date_yyyymm')
+                
+            # Define price and DOM columns to clean
+            price_cols = ['median_listing_price', 'median_listing_price_per_square_foot']
+            dom_cols = ['median_days_on_market']
+            
+            # Clean price columns
+            for col in price_cols:
+                if col in processed_df.columns:
+                    # Convert to numeric
+                    processed_df[col] = pd.to_numeric(processed_df[col], errors='coerce')
+                    
+                    # Remove extreme outliers (beyond 3 standard deviations)
+                    if len(processed_df[col].dropna()) > 3:
+                        mean_val = processed_df[col].mean()
+                        std_val = processed_df[col].std()
+                        if std_val > 0:
+                            outlier_mask = np.abs((processed_df[col] - mean_val) / std_val) > 3
+                            processed_df.loc[outlier_mask, col] = np.nan
+                            if outlier_mask.sum() > 0:
+                                logger.warning(f"Removed {outlier_mask.sum()} outliers from {col}")
+                    
+                    # Forward fill missing values (up to 3 months)
+                    processed_df[col] = processed_df[col].fillna(method='ffill', limit=3)
+                    
+                    # Calculate 3-month rolling average for smoothing
+                    if len(processed_df) >= 3:
+                        processed_df[f'{col}_smoothed'] = processed_df[col].rolling(window=3, min_periods=1).mean()
+                        # Replace original with smoothed values
+                        processed_df[col] = processed_df[f'{col}_smoothed']
+                        processed_df.drop(columns=[f'{col}_smoothed'], inplace=True)
+                        
+            # Clean DOM columns
+            for col in dom_cols:
+                if col in processed_df.columns:
+                    # Convert to numeric
+                    processed_df[col] = pd.to_numeric(processed_df[col], errors='coerce')
+                    
+                    # Validate reasonable DOM ranges (1-365 days)
+                    invalid_dom = (processed_df[col] < 1) | (processed_df[col] > 365)
+                    if invalid_dom.sum() > 0:
+                        logger.warning(f"Found {invalid_dom.sum()} invalid DOM values in {col}")
+                        processed_df.loc[invalid_dom, col] = np.nan
+                        
+                    # Forward fill missing values (up to 2 months for DOM)
+                    processed_df[col] = processed_df[col].fillna(method='ffill', limit=2)
+                    
+                    # Apply light smoothing to DOM (2-month rolling average)
+                    if len(processed_df) >= 2:
+                        processed_df[f'{col}_smoothed'] = processed_df[col].rolling(window=2, min_periods=1).mean()
+                        processed_df[col] = processed_df[f'{col}_smoothed']
+                        processed_df.drop(columns=[f'{col}_smoothed'], inplace=True)
+                        
+            # Remove rows where all key metrics are NaN
+            key_cols = [col for col in price_cols + dom_cols if col in processed_df.columns]
+            if key_cols:
+                processed_df = processed_df.dropna(subset=key_cols, how='all')
+                
+            logger.debug(f"Processed historical data: {len(df)} -> {len(processed_df)} rows")
+            
+            return processed_df
+            
+        except Exception as e:
+            logger.error(f"Error processing historical data: {str(e)}")
+            return df  # Return original data if processing fails
 
     def _is_cache_valid(self, filepath: Path) -> bool:
         """Check if cached data is still valid."""
@@ -378,19 +457,22 @@ class MarketDataService:
                 'avg_price_per_sqft': float(latest_data['median_listing_price_per_square_foot']) if pd.notna(latest_data['median_listing_price_per_square_foot']) else 0
             }
 
+            # Process and clean historical data
+            zip_data_cleaned = self._process_historical_data(zip_data)
+            
             # Prepare historical data
             historical_data = {
                 "median_listing_price": {
-                    "values": zip_data['median_listing_price'].tolist(),
-                    "dates": zip_data['month_date_yyyymm'].astype(str).tolist()
+                    "values": zip_data_cleaned['median_listing_price'].tolist(),
+                    "dates": zip_data_cleaned['month_date_yyyymm'].astype(str).tolist()
                 },
                 "median_days_on_market": {
-                    "values": zip_data['median_days_on_market'].tolist(),
-                    "dates": zip_data['month_date_yyyymm'].astype(str).tolist()
+                    "values": zip_data_cleaned['median_days_on_market'].tolist(),
+                    "dates": zip_data_cleaned['month_date_yyyymm'].astype(str).tolist()
                 },
                 "price_per_sqft": {
-                    "values": zip_data['median_listing_price_per_square_foot'].tolist(),
-                    "dates": zip_data['month_date_yyyymm'].astype(str).tolist()
+                    "values": zip_data_cleaned['median_listing_price_per_square_foot'].tolist(),
+                    "dates": zip_data_cleaned['month_date_yyyymm'].astype(str).tolist()
                 }
             }
 
@@ -480,19 +562,22 @@ class MarketDataService:
                 'avg_price_per_sqft': float(latest_data['median_listing_price_per_square_foot']) if pd.notna(latest_data['median_listing_price_per_square_foot']) else 0
             }
             
+            # Process and clean historical data
+            metro_data_cleaned = self._process_historical_data(metro_data)
+            
             # Prepare historical data
             historical_data = {
                 "median_listing_price": {
-                    "values": metro_data['median_listing_price'].tolist(),
-                    "dates": metro_data['month_date_yyyymm'].astype(str).tolist()
+                    "values": metro_data_cleaned['median_listing_price'].tolist(),
+                    "dates": metro_data_cleaned['month_date_yyyymm'].astype(str).tolist()
                 },
                 "median_days_on_market": {
-                    "values": metro_data['median_days_on_market'].tolist(),
-                    "dates": metro_data['month_date_yyyymm'].astype(str).tolist()
+                    "values": metro_data_cleaned['median_days_on_market'].tolist(),
+                    "dates": metro_data_cleaned['month_date_yyyymm'].astype(str).tolist()
                 },
                 "price_per_sqft": {
-                    "values": metro_data['median_listing_price_per_square_foot'].tolist(),
-                    "dates": metro_data['month_date_yyyymm'].astype(str).tolist()
+                    "values": metro_data_cleaned['median_listing_price_per_square_foot'].tolist(),
+                    "dates": metro_data_cleaned['month_date_yyyymm'].astype(str).tolist()
                 }
             }
             
