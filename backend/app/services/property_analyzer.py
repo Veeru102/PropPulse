@@ -889,28 +889,31 @@ class PropertyAnalyzer:
             return 0.0
 
     def _get_scaled_normalized_trend(self, price_change_pct: float, trend_period: int) -> float:
-        """Scales trend by period length and normalizes to a -1 to 1 range."""
+        """Scales trend by period length and normalizes to a -1 to 1 range using continuous scaling."""
         
-        # Confidence scaling factor based on the period length (in months)
-        # A 12-month period has full confidence (1.0)
-        # A 3-month period has less confidence (e.g., 0.75)
-        # A 1-month period has low confidence (e.g., 0.5)
-        if trend_period >= 12:
-            confidence_scale = 1.0
-        elif trend_period >= 6:
-            confidence_scale = 0.85
-        elif trend_period >= 3:
-            confidence_scale = 0.75
-        else:
-            confidence_scale = 0.5 + 0.25 * ((trend_period - 1) / 2) # Scale from 0.5 to 0.75 for 1-2 months
-
-        # Apply confidence scaling
-        scaled_trend_pct = price_change_pct * confidence_scale
+        # Dynamic confidence scaling based on period length
+        # Uses sigmoid function to create smooth transition between confidence levels
+        # Centered around 6 months with steeper scaling for shorter periods
+        confidence_scale = 0.5 + 0.5 / (1 + np.exp(-0.5 * (trend_period - 6)))
         
-        # Normalize to -1 to 1 range (e.g., 20% annual change as normalization factor)
-        # This means a 20% scaled trend will result in a normalized value of 1.0
-        normalization_factor = 20.0
-        normalized_trend = np.clip(scaled_trend_pct / normalization_factor, -1.0, 1.0)
+        # Apply confidence scaling with exponential dampening for extreme changes
+        dampening_factor = np.exp(-abs(price_change_pct) / 50)  # Reduces impact of extreme changes
+        scaled_trend_pct = price_change_pct * confidence_scale * (0.7 + 0.3 * dampening_factor)
+        
+        # Dynamic normalization factor based on market conditions
+        # Allows for larger ranges in volatile markets while maintaining stability
+        base_factor = 20.0  # Base normalization factor (20% annual change)
+        volatility_adjustment = max(1.0, abs(price_change_pct) / base_factor)
+        adjusted_factor = base_factor * np.sqrt(volatility_adjustment)
+        
+        # Normalize with smooth transition near boundaries
+        raw_normalized = scaled_trend_pct / adjusted_factor
+        
+        # Smooth clamping function to avoid hard cutoffs
+        def smooth_clamp(x, min_val=-1.0, max_val=1.0):
+            return min_val + (max_val - min_val) * (1 / (1 + np.exp(-5 * x)))
+            
+        normalized_trend = smooth_clamp(raw_normalized)
         
         return normalized_trend
             
@@ -1490,71 +1493,51 @@ class PropertyAnalyzer:
                 }
     
     def _calculate_market_health_heuristic(self, market_data: Dict[str, Any]) -> float:
-        """Calculate market health using real market data."""
+        """Calculate market health using real market data with dynamic scaling."""
         try:
-            # Price trends
+            # Price trends with continuous scaling
             price_change_1y = float(market_data.get('price_change_1y', 0))
             price_change_3y = float(market_data.get('price_change_3y', 0))
             
-            # Normalize price changes
-            def normalize_price_change(value):
-                if value < -10:
-                    return 0.2  # Significant decline
-                elif value < 0:
-                    return 0.4  # Moderate decline
-                elif value < 5:
-                    return 0.6  # Stable growth
-                elif value < 15:
-                    return 0.8  # Healthy growth
-                else:
-                    return min(1.0, 0.8 + (value - 15) / 30)  # Strong growth
+            # Dynamic price health calculation using sigmoid-like scaling
+            def calculate_price_health(change):
+                # Center point at 0% change, scale factor determines steepness
+                scale_factor = 0.15  # Adjusts sensitivity to price changes
+                return 0.5 + 0.4 * (2 / (1 + np.exp(-change * scale_factor)) - 1)
             
-            price_health_1y = normalize_price_change(price_change_1y)
-            price_health_3y = normalize_price_change(price_change_3y)
+            price_health_1y = calculate_price_health(price_change_1y)
+            price_health_3y = calculate_price_health(price_change_3y)
             
-            # Market activity
+            # Market activity metrics
             median_dom = float(market_data.get('median_dom', 45))
             active_listings = float(market_data.get('active_listing_count', 100))
             monthly_sales = float(market_data.get('monthly_sales', 10))
             
-            # DOM health
-            if median_dom > 90:
-                dom_health = 0.2  # Slow market
-            elif median_dom > 60:
-                dom_health = 0.4  # Moderately slow
-            elif median_dom > 30:
-                dom_health = 0.6  # Average
-            elif median_dom > 15:
-                dom_health = 0.8  # Quick sales
-            else:
-                dom_health = 1.0  # Very quick sales
+            # DOM health with continuous scaling
+            # Optimal DOM range: 15-45 days
+            dom_scale = np.clip((60 - median_dom) / 45, -1, 1)
+            dom_health = 0.5 + 0.4 * dom_scale
             
-            # Sales velocity
+            # Supply-demand dynamics
             months_of_supply = active_listings / max(1, monthly_sales)
-            if months_of_supply > 12:
-                supply_health = 0.2  # Oversupplied
-            elif months_of_supply > 8:
-                supply_health = 0.4  # High supply
-            elif months_of_supply > 6:
-                supply_health = 0.6  # Balanced
-            elif months_of_supply > 3:
-                supply_health = 0.8  # Low supply
-            else:
-                supply_health = 1.0  # Very low supply
+            # Optimal range: 4-6 months of supply
+            supply_scale = np.clip(2 - abs(months_of_supply - 5) / 3, 0, 1)
+            supply_health = 0.3 + 0.6 * supply_scale
             
-            # Combined health score
+            # Market velocity (sales rate relative to inventory)
+            sales_ratio = monthly_sales / max(1, active_listings)
+            velocity_health = 0.3 + 0.6 * min(sales_ratio * 2, 1.0)
+            
+            # Combined health score with dynamic weights
             market_health = (
-                price_health_1y * 0.3 +
-                price_health_3y * 0.2 +
+                price_health_1y * 0.25 +
+                price_health_3y * 0.15 +
                 dom_health * 0.25 +
-                supply_health * 0.25
+                supply_health * 0.2 +
+                velocity_health * 0.15
             )
             
-            # Note: Verbose logging reduced to prevent console flooding
-            # logger.debug(f"Market Health Components: price_1y={price_health_1y:.2f}, "
-            #            f"price_3y={price_health_3y:.2f}, dom={dom_health:.2f}, "
-            #            f"supply={supply_health:.2f}")
-            
+            # Ensure output range matches existing contract
             return max(0.1, min(0.9, market_health))
             
         except Exception as e:
@@ -1562,59 +1545,58 @@ class PropertyAnalyzer:
             return 0.35
     
     def _calculate_market_momentum_heuristic(self, market_data: Dict[str, Any]) -> float:
-        """Calculate market momentum using real market data."""
+        """Calculate market momentum using real market data with continuous scaling."""
         try:
-            # Price momentum
+            # Price momentum with exponential weighting
             price_change_1y = float(market_data.get('price_change_1y', 0))
             price_change_3y = float(market_data.get('price_change_3y', 0))
             price_change_5y = float(market_data.get('price_change_5y', 0))
             
-            # Recent price changes carry more weight
-            price_momentum = (
-                price_change_1y * 0.5 +
-                price_change_3y * 0.3 +
-                price_change_5y * 0.2
-            ) / 10  # Normalize to [0,1] range
-            price_momentum = max(0.1, min(0.9, price_momentum + 0.5))  # Center around 0.5
+            # Normalize price changes with continuous scaling
+            def normalize_price_momentum(change):
+                # Use sigmoid-like function centered at 0
+                scale = 0.2  # Sensitivity to price changes
+                base = 0.5 + 0.4 * np.tanh(change * scale)
+                return max(0.1, min(0.9, base))
             
-            # Sales momentum
+            # Weight recent changes more heavily
+            price_momentum = (
+                normalize_price_momentum(price_change_1y) * 0.5 +
+                normalize_price_momentum(price_change_3y) * 0.3 +
+                normalize_price_momentum(price_change_5y) * 0.2
+            )
+            
+            # Sales momentum with continuous scaling
             current_sales = float(market_data.get('monthly_sales', 10))
             prev_sales = float(market_data.get('prev_monthly_sales', 10))
-            sales_change = ((current_sales - prev_sales) / max(1, prev_sales)) * 100
+            sales_change_pct = ((current_sales - prev_sales) / max(1, prev_sales)) * 100
             
-            if sales_change < -20:
-                sales_momentum = 0.2  # Sharp decline
-            elif sales_change < -10:
-                sales_momentum = 0.4  # Moderate decline
-            elif sales_change < 10:
-                sales_momentum = 0.6  # Stable
-            elif sales_change < 20:
-                sales_momentum = 0.8  # Growth
-            else:
-                sales_momentum = 0.9  # Strong growth
+            # Continuous sales momentum scaling
+            sales_scale = np.clip(sales_change_pct / 20, -1, 1)  # Normalize to [-1, 1]
+            sales_momentum = 0.5 + 0.4 * sales_scale  # Scale to [0.1, 0.9]
             
-            # Listing momentum
+            # Listing momentum with continuous scaling
             new_listings = float(market_data.get('new_listings', 0))
             total_listings = float(market_data.get('active_listing_count', 100))
             listing_ratio = new_listings / max(1, total_listings)
             
-            if listing_ratio > 0.4:
-                listing_momentum = 0.3  # Too many new listings
-            elif listing_ratio > 0.2:
-                listing_momentum = 0.6  # Healthy new inventory
-            else:
-                listing_momentum = 0.8  # Limited new inventory
+            # Optimal listing ratio around 0.15-0.25
+            listing_scale = 1 - abs(listing_ratio - 0.2) * 2
+            listing_momentum = 0.3 + 0.6 * np.clip(listing_scale, 0, 1)
             
-            # Combined momentum
+            # Market velocity component
+            monthly_sales = float(market_data.get('monthly_sales', 10))
+            active_listings = float(market_data.get('active_listing_count', 100))
+            velocity_ratio = monthly_sales / max(1, active_listings)
+            velocity_momentum = 0.3 + 0.6 * min(velocity_ratio * 3, 1.0)
+            
+            # Combined momentum with dynamic weighting
             market_momentum = (
-                price_momentum * 0.4 +
-                sales_momentum * 0.35 +
-                listing_momentum * 0.25
+                price_momentum * 0.35 +
+                sales_momentum * 0.25 +
+                listing_momentum * 0.2 +
+                velocity_momentum * 0.2
             )
-            
-            # Note: Verbose logging reduced to prevent console flooding
-            # logger.debug(f"Market Momentum Components: price={price_momentum:.2f}, "
-            #            f"sales={sales_momentum:.2f}, listings={listing_momentum:.2f}")
             
             return max(0.1, min(0.9, market_momentum))
             
@@ -1623,53 +1605,44 @@ class PropertyAnalyzer:
             return 0.25
     
     def _calculate_market_stability_heuristic(self, market_data: Dict[str, Any]) -> float:
-        """Calculate market stability using real market data."""
+        """Calculate market stability using real market data with continuous scaling."""
         try:
-            # Price stability
+            # Price stability with exponential decay
             price_volatility = float(market_data.get('price_volatility', 0.1))
-            price_stability = max(0.1, min(0.9, 1 - (price_volatility * 4)))
+            # Exponential decay function for smoother transition
+            price_stability = 0.9 * np.exp(-3 * price_volatility) + 0.1
             
-            # Inventory stability
+            # Inventory stability with continuous scaling
             current_inventory = float(market_data.get('active_listing_count', 100))
             prev_inventory = float(market_data.get('prev_active_listing_count', 100))
-            inventory_change = abs((current_inventory - prev_inventory) / max(1, prev_inventory)) * 100
+            inventory_change = abs((current_inventory - prev_inventory) / max(1, prev_inventory))
             
-            if inventory_change > 30:
-                inventory_stability = 0.2  # Very unstable
-            elif inventory_change > 20:
-                inventory_stability = 0.4  # Unstable
-            elif inventory_change > 10:
-                inventory_stability = 0.6  # Moderately stable
-            else:
-                inventory_stability = 0.8  # Stable
+            # Gaussian-like stability score centered around 0% change
+            inventory_stability = 0.9 * np.exp(-(inventory_change ** 2) / 0.04) + 0.1
             
-            # DOM stability
+            # DOM stability with continuous scaling
             dom_volatility = float(market_data.get('dom_volatility', 0.1))
-            dom_stability = max(0.1, min(0.9, 1 - (dom_volatility * 3)))
+            # Sigmoid-based stability score
+            dom_stability = 0.1 + 0.8 / (1 + np.exp(5 * dom_volatility))
             
-            # Price reduction stability
+            # Price reduction stability with continuous scaling
             reduction_ratio = float(market_data.get('price_reduction_ratio', 0.1))
-            if reduction_ratio > 0.4:
-                reduction_stability = 0.2  # Very unstable
-            elif reduction_ratio > 0.3:
-                reduction_stability = 0.4  # Unstable
-            elif reduction_ratio > 0.2:
-                reduction_stability = 0.6  # Moderately stable
-            else:
-                reduction_stability = 0.8  # Stable
+            # Optimal reduction ratio around 0.1-0.2
+            reduction_scale = abs(reduction_ratio - 0.15)
+            reduction_stability = 0.9 * np.exp(-5 * reduction_scale) + 0.1
             
-            # Combined stability
+            # Sales variance stability
+            sales_volatility = float(market_data.get('sales_volatility', 0.15))
+            sales_stability = 0.9 * np.exp(-4 * sales_volatility) + 0.1
+            
+            # Combined stability with dynamic weighting
             market_stability = (
-                price_stability * 0.35 +
-                inventory_stability * 0.25 +
+                price_stability * 0.3 +
+                inventory_stability * 0.2 +
                 dom_stability * 0.2 +
-                reduction_stability * 0.2
+                reduction_stability * 0.15 +
+                sales_stability * 0.15
             )
-            
-            # Note: Verbose logging reduced to prevent console flooding
-            # logger.debug(f"Market Stability Components: price={price_stability:.2f}, "
-            #            f"inventory={inventory_stability:.2f}, dom={dom_stability:.2f}, "
-            #            f"reduction={reduction_stability:.2f}")
             
             return max(0.1, min(0.9, market_stability))
             
