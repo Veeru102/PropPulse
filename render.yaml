@@ -3,10 +3,10 @@ services:
   - type: web
     runtime: static
     name: proppulse-frontend
+    plan: free 
     buildCommand: 'npm install && npm run build'
     staticPublishPath: frontend/build
     env:
-      # You might need to set environment variables here, e.g., for API URL
       # - key: REACT_APP_BACKEND_URL
       #   value: 'https://proppulse-backend.onrender.com'
 
@@ -14,9 +14,9 @@ services:
   - type: web
     name: proppulse-backend
     env: python
+    plan: free 
     buildCommand: 'pip install -r backend/requirements.txt'
     startCommand: 'cd backend && export PYTHONPATH=$(pwd):$PYTHONPATH && uvicorn app.main:app --host 0.0.0.0 --port $PORT'
     autoDeploy: true
-    # You might need to set environment variables here, e.g., for database connection
     # - key: DATABASE_URL
     #   value: 'your_database_url'
