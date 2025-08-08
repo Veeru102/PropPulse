@@ -201,6 +201,7 @@ interface InvestmentStrategyCardProps {
   forecast: any;
   marketHealth: any;
   investmentMetrics: any;
+  priceTrends: any;
   showCashOnCashInfo?: boolean;
 }
 
@@ -219,10 +220,11 @@ export const InvestmentStrategyCard: React.FC<InvestmentStrategyCardProps> = ({
   forecast,
   marketHealth,
   investmentMetrics,
+  priceTrends,
   showCashOnCashInfo
 }) => {
   const insights = [
-    `Projected ${forecast.short_term_forecast.value > 0 ? 'growth' : 'decline'} of ${Math.abs(forecast.short_term_forecast.value).toFixed(1)}% in next 6 months`,
+    `Projected ${priceTrends.yoy_change > 0 ? 'growth' : 'decline'} of ${Math.abs(priceTrends.yoy_change).toFixed(1)}% in next 6 months`,
     `Cap rate of ${investmentMetrics.cap_rate.toFixed(2)}% with ${investmentMetrics.cash_on_cash.toFixed(2)}% cash on cash return`
   ];
 
@@ -249,7 +251,7 @@ export const InvestmentStrategyCard: React.FC<InvestmentStrategyCardProps> = ({
 
   const badges = [
     { label: marketHealth.price_momentum > 0.1 ? 'Strong Growth' : 'Stable Growth', color: getGrowthBadge5CategoryColor(marketHealth.price_momentum) },
-    { label: `ROI ${((forecast.short_term_forecast.value + forecast.medium_term_forecast.value) / 2).toFixed(1)}%`, color: getRoiBadge5CategoryColor((forecast.short_term_forecast.value + forecast.medium_term_forecast.value) / 2) }
+    { label: `ROI ${priceTrends.yoy_change.toFixed(1)}%`, color: getRoiBadge5CategoryColor(priceTrends.yoy_change) }
   ];
 
   return (

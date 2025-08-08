@@ -616,6 +616,7 @@ const MLAnalysis: React.FC<MLAnalysisProps> = ({ property }) => {
             forecast={transformedForecast}
             marketHealth={transformedMarketHealth}
             investmentMetrics={investmentMetricsForCard}
+            priceTrends={transformedPriceTrends}
             showCashOnCashInfo
           />
           <LiquidityExitCard
