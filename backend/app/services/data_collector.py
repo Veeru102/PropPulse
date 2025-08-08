@@ -7,6 +7,8 @@ from app.services.realtor_api import RealtorAPIService
 from app.core.config import settings
 from app.core.cache import property_cache, market_cache
 from pathlib import Path
+import os
+import logging
 
 logger = loggers['ml']
 
@@ -17,7 +19,16 @@ class DataCollector:
 
     def __init__(self):
         """Initialize data collector with required services and paths to data files."""
+        self.data_dir = Path(settings.BASE_DIR) / "data"
         self.realtor_api = RealtorAPIService()
+        # Initialize all dataframes as empty; they will be loaded lazily on first access.
+        self.zillow_zip: pd.DataFrame = pd.DataFrame()
+        self.zillow_metro: pd.DataFrame = pd.DataFrame()
+        self.zillow_county: pd.DataFrame = pd.DataFrame()
+        self.realtor_metro: pd.DataFrame = pd.DataFrame()
+        self.realtor_county: pd.DataFrame = pd.DataFrame()
+        self.realtor_zip: pd.DataFrame = pd.DataFrame()
+        self.realtor_data = {} # This holds data fetched from Realtor API, not the CSVs
         # Local import to avoid circular dependencies
         from app.services.service_manager import ServiceManager
         # Reuse the singleton MarketDataService to avoid repeated heavy CSV loads
@@ -28,13 +39,57 @@ class DataCollector:
         # doesn't have the search results cached.
         self.property_cache = DataCollector._shared_property_cache
         self.required_features = settings.REQUIRED_FEATURES
-        self.data_dir = Path(settings.DATA_DIR)
-        self.zillow_metro = pd.read_csv(self.data_dir / "zillow_metro.csv")
-        self.zillow_county = pd.read_csv(self.data_dir / "zillow_county.csv")
-        self.zillow_zip = pd.read_csv(self.data_dir / "zillow_zip.csv")
-        self.realtor_metro = pd.read_csv(self.data_dir / "realtor_metro.csv")
-        self.realtor_county = pd.read_csv(self.data_dir / "realtor_county.csv")
-        self.realtor_zip = pd.read_csv(self.data_dir / "realtor_zip.csv", engine='python', na_values=' ')
+
+    def _load_all_local_csvs(self):
+        """Loads all necessary local CSVs for DataCollector into memory."""
+        logger.info("Attempting to load all local CSVs for DataCollector.")
+        
+        if not self.data_dir.exists():
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Created data directory: {self.data_dir}")
+
+        csv_files = {
+            'zillow_zip': self.zillow_zip,
+            'zillow_metro': self.zillow_metro,
+            'zillow_county': self.zillow_county,
+            'realtor_metro': self.realtor_metro,
+            'realtor_county': self.realtor_county,
+            'realtor_zip': self.realtor_zip,
+        }
+        
+        for key, df_attribute in csv_files.items():
+            if df_attribute.empty: # Only load if not already loaded
+                file_path = self.data_dir / f"{key}.csv"
+                try:
+                    if file_path.exists():
+                        # Special handling for realtor_zip if engine='python' is critical
+                        if key == 'realtor_zip':
+                            setattr(self, key, pd.read_csv(file_path, engine='python', na_values=' '))
+                        else:
+                            setattr(self, key, pd.read_csv(file_path))
+                        logger.info(f"Loaded {key}.csv. Shape: {getattr(self, key).shape}")
+                    else:
+                        logger.warning(f"{key}.csv not found at {file_path}. Initializing empty DataFrame.")
+                        setattr(self, key, pd.DataFrame())
+                except Exception as e:
+                    logger.error(f"Error loading {key}.csv: {e}")
+                    setattr(self, key, pd.DataFrame())
+
+        if self.zillow_zip.empty and self.zillow_metro.empty and self.zillow_county.empty and \
+           self.realtor_metro.empty and self.realtor_county.empty and self.realtor_zip.empty:
+            logger.error("No local CSV market data could be loaded for DataCollector.")
+        else:
+            logger.info("All DataCollector local CSVs checked/loaded.")
+
+    def _ensure_data_collector_data_loaded(self):
+        """Ensures all necessary local CSV data for DataCollector is loaded."""
+        # Check if a critical piece of data (e.g., realtor_zip) is loaded
+        if self.realtor_zip.empty and self.zillow_zip.empty: # Check both primary data sources
+            self._load_all_local_csvs()
+            if self.realtor_zip.empty and self.zillow_zip.empty:
+                raise Exception("Failed to load critical DataCollector local CSVs after explicit request.")
+        else:
+            logger.debug("DataCollector local CSVs already loaded.")
 
     async def collect_training_data(self, location: str, time_period: str = "1y") -> pd.DataFrame:
         """
@@ -49,6 +104,9 @@ class DataCollector:
         """
         try:
             logger.info(f"Collecting training data for {location} over {time_period}")
+            
+            # Ensure local CSV data is loaded before proceeding with data collection/processing that relies on it
+            self._ensure_data_collector_data_loaded()
             
             # Collect property data
             properties = await self._collect_property_data(location, time_period)
