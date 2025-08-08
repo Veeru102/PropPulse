@@ -1,6 +1,7 @@
 services:
   # Frontend Service
-  - type: static site
+  - type: web
+    runtime: static
     name: proppulse-frontend
     buildCommand: 'npm install && npm run build'
     staticPublishPath: frontend/build
