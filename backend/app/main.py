@@ -20,7 +20,7 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?:\/\/(www\.)?proppulse\.netlify\.app|https?:\/\/proppulse-hmgf\.onrender\.com|http:\/\/localhost:(3000|8000)$",
+    allow_origins=["https://proppulse.netlify.app", "https://proppulse-hmgf.onrender.com", "http://localhost:3000", "http://localhost:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
