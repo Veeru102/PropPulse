@@ -11,7 +11,7 @@ services:
       #   value: 'https://proppulse-backend.onrender.com'
 
   # Backend Service
-  - type: web service
+  - type: web
     name: proppulse-backend
     env: python
     buildCommand: 'pip install -r backend/requirements.txt'
