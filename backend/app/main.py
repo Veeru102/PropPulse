@@ -58,7 +58,7 @@ async def startup_event():
         logger.warning(f"Data directory not found or not a directory: {data_dir}")
     
     # Initialize services after logging paths
-    await ServiceManager.initialize_services()
+    ServiceManager.initialize_services()
     logger.info("Services initialized successfully")
 
 @app.get("/")
