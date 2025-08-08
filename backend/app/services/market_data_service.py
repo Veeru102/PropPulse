@@ -18,11 +18,32 @@ class MarketDataService:
         self.data_dir = os.path.join(settings.BASE_DIR, "data")
         self._ensure_data_directory()
         self.cache_duration = timedelta(days=30)  # Cache data for 30 days
+        # Initialize data structures to empty, they will be loaded on first request
+        self.realtor_data: Dict[str, pd.DataFrame] = {
+            'zip': pd.DataFrame(),
+            'metro': pd.DataFrame(),
+            'national': pd.DataFrame(),
+            'county': pd.DataFrame()
+        }
+        self.zillow_data: Dict[str, pd.DataFrame] = {
+            'zip': pd.DataFrame(),
+            'county': pd.DataFrame(),
+            'metro': pd.DataFrame()
+        }
         # URLs for historical data from Realtor.com data library
         self.zip_history_url = "https://econdata.s3-us-west-2.amazonaws.com/Reports/Core/RDC_Inventory_Core_Metrics_Zip_History.csv"
         self.metro_history_url = "https://econdata.s3-us-west-2.amazonaws.com/Reports/Core/RDC_Inventory_Core_Metrics_Metro_History.csv"
-        self._load_data()
-        
+
+    def _ensure_data_loaded(self):
+        """Ensure data is loaded. If not, load it."""
+        if self.realtor_data['zip'].empty and self.realtor_data['metro'].empty:
+            logger.info("Market data not yet loaded. Loading now...")
+            self._load_data()
+            if self.realtor_data['zip'].empty and self.realtor_data['metro'].empty:
+                raise Exception("Failed to load market data after explicit request.")
+        else:
+            logger.debug("Market data already loaded.")
+
     def _ensure_data_directory(self):
         """Ensure the data directory exists."""
         if not os.path.exists(self.data_dir):
@@ -287,6 +308,9 @@ class MarketDataService:
         """
         try:
             logger.info(f"Getting market trends for location: {location}")
+
+            # Ensure data is loaded before proceeding
+            self._ensure_data_loaded()
             
             # Check if location is a ZIP code or city/state
             if ',' in location:
