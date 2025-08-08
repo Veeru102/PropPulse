@@ -64,6 +64,10 @@ async def analyze_property(
         if not market_trends.get("error"):
             market_data.update(market_trends)
             
+            # Add historical data if available
+            if 'market_data' in market_trends and 'historical_data' in market_trends['market_data']:
+                market_data['historical_data'] = market_trends['market_data']['historical_data']
+            
         # Transform property data to match analyzer expectations
         transformed_property = transform_property_data(property_data)
         

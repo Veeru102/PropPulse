@@ -799,8 +799,13 @@ class PropertyAnalyzer:
     def _calculate_price_trend(self, market_data: Dict[str, Any]) -> float:
         """Calculate price trend using proper historical analysis with smoothing and normalization."""
         try:
+            # Add debug logging for price trend calculation
+            logger.debug(f"PRICE_TREND_DEBUG: market_data keys: {list(market_data.keys())}")
+            
             # Try to get historical data from different sources
             historical_data = market_data.get('historical_data', {})
+            logger.debug(f"PRICE_TREND_DEBUG: historical_data keys: {list(historical_data.keys()) if historical_data else 'None'}")
+            logger.debug(f"PRICE_TREND_DEBUG: historical_data type: {type(historical_data)}")
             
             price_data = None
             price_dates = None
@@ -808,18 +813,77 @@ class PropertyAnalyzer:
             if historical_data:
                 # From structured historical data
                 median_price_data = historical_data.get('median_listing_price', {})
+                logger.debug(f"PRICE_TREND_DEBUG: median_price_data type: {type(median_price_data)}, keys: {list(median_price_data.keys()) if isinstance(median_price_data, dict) else 'N/A'}")
                 if isinstance(median_price_data, dict) and 'values' in median_price_data:
                     price_data = median_price_data.get('values', [])
                     price_dates = median_price_data.get('dates', [])
+                    logger.debug(f"PRICE_TREND_DEBUG: Found {len(price_data)} price values: {price_data[:5] if price_data else 'None'}")
                     
             # If no structured historical data, try direct fields
             if not price_data:
                 price_data = market_data.get('price_history', []) or market_data.get('historical_prices', [])
+                logger.debug(f"PRICE_TREND_DEBUG: Trying direct fields, found: {price_data}")
                 
-            # If still no data, return neutral
+            # If still no data, try to use single-period change data as fallback
             if not price_data or len(price_data) < 2:
-                logger.debug("No historical price data available for trend calculation")
-                return 0.0
+                logger.debug(f"PRICE_TREND_DEBUG: Insufficient price data ({len(price_data) if price_data else 0} points), trying fallback methods")
+                
+                # Try to use price change fields if available
+                price_change_1y = market_data.get('price_change_1y', 0)
+                price_change_3y = market_data.get('price_change_3y', 0)
+            
+                logger.debug(f"PRICE_TREND_DEBUG: Checking fallback values - price_change_1y: {price_change_1y}, price_change_3y: {price_change_3y}")
+                
+                if price_change_1y != 0:
+                    logger.debug(f"PRICE_TREND_DEBUG: Using price_change_1y fallback: {price_change_1y}%")
+                    # Convert percentage to decimal and apply dampening
+                    dampening_factor = np.exp(-abs(price_change_1y) / 50)
+                    dampened_pct = price_change_1y * (0.7 + 0.3 * dampening_factor)
+                    result = dampened_pct / 100
+                    logger.debug(f"PRICE_TREND_DEBUG: Fallback result from price_change_1y: {result}")
+                    return result
+                elif price_change_3y != 0:
+                    logger.debug(f"PRICE_TREND_DEBUG: Using price_change_3y fallback: {price_change_3y}%")
+                    # Annualize the 3-year change and apply dampening
+                    annual_change = price_change_3y / 3
+                    dampening_factor = np.exp(-abs(annual_change) / 50)
+                    dampened_pct = annual_change * (0.7 + 0.3 * dampening_factor)
+                    result = dampened_pct / 100
+                    logger.debug(f"PRICE_TREND_DEBUG: Fallback result from price_change_3y: {result}")
+                    return result
+                else:
+                    # Try to use market analysis price trends as a final fallback
+                    market_analysis = market_data.get('market_analysis', {})
+                    price_trends = market_analysis.get('price_trends', {})
+                    
+                    if price_trends:
+                        logger.debug(f"PRICE_TREND_DEBUG: Trying market_analysis price_trends fallback")
+                        logger.debug(f"PRICE_TREND_DEBUG: price_trends keys: {list(price_trends.keys())}")
+                        
+                        # Try different price trend fields
+                        yoy_change = price_trends.get('yoy_change', 0)
+                        short_term_trend = price_trends.get('short_term_trend', 0)
+                        
+                        if yoy_change != 0:
+                            logger.debug(f"PRICE_TREND_DEBUG: Using market_analysis yoy_change: {yoy_change}%")
+                            # Apply dampening and convert to decimal
+                            dampening_factor = np.exp(-abs(yoy_change) / 50)
+                            dampened_pct = yoy_change * (0.7 + 0.3 * dampening_factor)
+                            result = dampened_pct / 100
+                            logger.debug(f"PRICE_TREND_DEBUG: Market analysis yoy_change result: {result}")
+                            return result
+                        elif short_term_trend != 0:
+                            logger.debug(f"PRICE_TREND_DEBUG: Using market_analysis short_term_trend: {short_term_trend}%")
+                            # Apply dampening and convert to decimal
+                            dampening_factor = np.exp(-abs(short_term_trend) / 50)
+                            dampened_pct = short_term_trend * (0.7 + 0.3 * dampening_factor)
+                            result = dampened_pct / 100
+                            logger.debug(f"PRICE_TREND_DEBUG: Market analysis short_term_trend result: {result}")
+                            return result
+                    
+                    logger.debug(f"PRICE_TREND_DEBUG: No historical price data or change data available for trend calculation")
+                    logger.debug(f"PRICE_TREND_DEBUG: All available market_data keys: {list(market_data.keys())}")
+                    return 0.0
                 
             # Convert to pandas Series for easier manipulation
             prices_series = pd.Series([float(p) for p in price_data if p is not None and pd.notna(p)])
@@ -878,44 +942,74 @@ class PropertyAnalyzer:
                 monthly_growth_rate = (latest_price / year_ago_price)**(1/trend_period) - 1
                 price_change_pct = ((1 + monthly_growth_rate)**12 - 1) * 100
 
-            # Normalize to -1 to 1 range, with scaling for confidence
-            normalized_trend = self._get_scaled_normalized_trend(price_change_pct, trend_period)
-            
-            logger.debug(f"Calculated price trend: {price_change_pct:.2f}% over {trend_period} months, normalized to {normalized_trend:.2f}")
-            return normalized_trend
+            # Only normalize if using ML model prediction
+            if self.ml_models_loaded and 'price_trend' in self.ml_models:
+                normalized_trend = self._get_scaled_normalized_trend(price_change_pct, trend_period)
+                logger.debug(f"Calculated price trend (ML): {price_change_pct:.2f}% over {trend_period} months, normalized to {normalized_trend:.2f}")
+                return normalized_trend
+            else:
+                # For heuristic calculation, return the raw percentage after dampening
+                dampening_factor = np.exp(-abs(price_change_pct) / 50)  # Dampen extreme values
+                dampened_pct = price_change_pct * (0.7 + 0.3 * dampening_factor)
+                logger.debug(f"Calculated price trend (heuristic): raw={price_change_pct:.2f}%, dampened={dampened_pct:.2f}%")
+                return dampened_pct / 100  # Convert to decimal for consistency with other metrics
             
         except Exception as e:
             logger.error(f"Error in _calculate_price_trend: {e}", exc_info=True)
             return 0.0
 
     def _get_scaled_normalized_trend(self, price_change_pct: float, trend_period: int) -> float:
-        """Scales trend by period length and normalizes to a -1 to 1 range using continuous scaling."""
-        
-        # Dynamic confidence scaling based on period length
-        # Uses sigmoid function to create smooth transition between confidence levels
-        # Centered around 6 months with steeper scaling for shorter periods
-        confidence_scale = 0.5 + 0.5 / (1 + np.exp(-0.5 * (trend_period - 6)))
-        
-        # Apply confidence scaling with exponential dampening for extreme changes
-        dampening_factor = np.exp(-abs(price_change_pct) / 50)  # Reduces impact of extreme changes
-        scaled_trend_pct = price_change_pct * confidence_scale * (0.7 + 0.3 * dampening_factor)
-        
-        # Dynamic normalization factor based on market conditions
-        # Allows for larger ranges in volatile markets while maintaining stability
-        base_factor = 20.0  # Base normalization factor (20% annual change)
-        volatility_adjustment = max(1.0, abs(price_change_pct) / base_factor)
-        adjusted_factor = base_factor * np.sqrt(volatility_adjustment)
-        
-        # Normalize with smooth transition near boundaries
-        raw_normalized = scaled_trend_pct / adjusted_factor
-        
-        # Smooth clamping function to avoid hard cutoffs
-        def smooth_clamp(x, min_val=-1.0, max_val=1.0):
-            return min_val + (max_val - min_val) * (1 / (1 + np.exp(-5 * x)))
+        """
+        Scales trend by period length and normalizes to a -1 to 1 range, targeting typical 
+        real estate market ranges of ±5% to ±15% annually.
+        """
+        try:
+            # Allow slightly wider range for initial clipping to account for adjustments
+            max_annual_change = 20.0  # Maximum realistic annual change
+            clipped_change = np.clip(price_change_pct, -max_annual_change, max_annual_change)
             
-        normalized_trend = smooth_clamp(raw_normalized)
-        
-        return normalized_trend
+            # Enhanced confidence scaling based on data period length
+            # Exponential decay for shorter periods to heavily discount short-term volatility
+            base_confidence = 1.0 - np.exp(-trend_period / 4)  # Reaches ~0.95 at 12 months
+            confidence_scale = 0.3 + (0.7 * base_confidence)  # Range [0.3, 1.0]
+            
+            # More aggressive dampening as we approach max ranges
+            abs_change = abs(clipped_change)
+            if abs_change <= 5:
+                dampening = 1.0  # No dampening for small changes
+            elif abs_change <= 10:
+                dampening = 0.8  # Moderate dampening
+            else:
+                # Progressive dampening for larger changes
+                dampening = 0.8 * np.exp(-(abs_change - 10) / 10)
+            
+            # Apply confidence and dampening
+            adjusted_change = clipped_change * confidence_scale * dampening
+            
+            # Final scaling to target range
+            target_max = 15.0  # Maximum target annual change
+            normalized = adjusted_change / target_max  # Will be in [-1, 1] range
+            
+            # Smooth sigmoid transformation for final output
+            def sigmoid_transform(x, steepness=2.0):
+                return 2 / (1 + np.exp(-steepness * x)) - 1
+            
+            final_trend = sigmoid_transform(normalized)
+            
+            # Log intermediate values for debugging
+            logger.debug(f"Price trend calculation:")
+            logger.debug(f"  Raw change: {price_change_pct:.2f}%")
+            logger.debug(f"  Clipped change: {clipped_change:.2f}%")
+            logger.debug(f"  Confidence ({trend_period} months): {confidence_scale:.2f}")
+            logger.debug(f"  Dampening factor: {dampening:.2f}")
+            logger.debug(f"  Adjusted change: {adjusted_change:.2f}%")
+            logger.debug(f"  Final normalized trend: {final_trend:.2f}")
+            
+            return final_trend
+            
+        except Exception as e:
+            logger.error(f"Error in _get_scaled_normalized_trend: {e}")
+            return 0.0  # Safe fallback
             
     def _calculate_risk_metrics(self, property_data: Dict[str, Any], market_data: Dict[str, Any]) -> Dict[str, Any]:
         """Calculate risk assessment metrics using ML models with heuristic fallback.
@@ -1364,6 +1458,7 @@ class PropertyAnalyzer:
                 
                 # Calculate price trend using historical data
                 metrics['price_trend'] = self._calculate_price_trend(market_data)
+                logger.debug(f"PRICE_TREND_DEBUG: Final price_trend result (heuristic path): {metrics['price_trend']}")
                 
                 return {
                     'market_health': metrics['market_health'],
@@ -1439,6 +1534,7 @@ class PropertyAnalyzer:
             # Calculate price trend using historical data
             metrics['price_trend'] = self._calculate_price_trend(market_data)
             metrics_source['price_trend'] = 'historical_analysis'
+            logger.debug(f"PRICE_TREND_DEBUG: Final price_trend result: {metrics['price_trend']}")
             
             # Log detailed metrics information
             logger.info(f"Market metrics: health={metrics['market_health']:.4f} ({metrics_source.get('market_health', 'unknown')}), "

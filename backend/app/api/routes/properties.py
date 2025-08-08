@@ -157,6 +157,7 @@ async def get_properties(
             # Extract market data from market_trends
             current_metrics = market_trends.get('market_data', {}).get('current_metrics', {})
             market_analysis = market_trends.get('market_analysis', {})
+            historical_data = market_trends.get('market_data', {}).get('historical_data', {})
             
             # Update market data with available values
             if current_metrics:
@@ -168,6 +169,10 @@ async def get_properties(
                     'price_increase_count': market_data.get('price_increase_count', 10)
                 })
             
+            # Include historical data for price trend calculations
+            if historical_data:
+                market_data['historical_data'] = historical_data
+                
             # Update with market analysis data if available
             if market_analysis:
                 inventory_health = market_analysis.get('inventory_health', {})
@@ -335,6 +340,7 @@ async def get_property_details(property_id: str):
             # Extract market data from market_trends
             current_metrics = market_trends.get('market_data', {}).get('current_metrics', {})
             market_analysis = market_trends.get('market_analysis', {})
+            historical_data = market_trends.get('market_data', {}).get('historical_data', {})
             
             # Update market data with available values
             if current_metrics:
@@ -346,6 +352,10 @@ async def get_property_details(property_id: str):
                     'price_increase_count': market_data.get('price_increase_count', 10)
                 })
             
+            # Include historical data for price trend calculations
+            if historical_data:
+                market_data['historical_data'] = historical_data
+                
             # Update with market analysis data if available
             if market_analysis:
                 inventory_health = market_analysis.get('inventory_health', {})
@@ -378,6 +388,17 @@ async def get_property_details(property_id: str):
         # Add market trends to property data if available
         if "error" not in market_trends:
             transformed_property['market_trends'] = market_trends
+            
+        # Add historical data to market_data if available
+        if "error" not in market_trends and 'market_data' in market_trends and 'historical_data' in market_trends['market_data']:
+            market_data['historical_data'] = market_trends['market_data']['historical_data']
+            logger.debug(f"PRICE_TREND_FIX: Added historical_data to market_data for property {property_id}")
+            logger.debug(f"PRICE_TREND_FIX: Historical data keys: {list(market_trends['market_data']['historical_data'].keys())}")
+        else:
+            logger.debug(f"PRICE_TREND_FIX: No historical data available for property {property_id}")
+            logger.debug(f"PRICE_TREND_FIX: market_trends keys: {list(market_trends.keys()) if market_trends else 'None'}")
+            if 'market_data' in market_trends:
+                logger.debug(f"PRICE_TREND_FIX: market_data keys: {list(market_trends['market_data'].keys())}")
         
         # Analyze the property with both property_data and market_data
         analysis = property_analyzer.analyze_property(transformed_property, market_data)
@@ -459,6 +480,17 @@ async def get_property_analysis(
         # Update market data if available
         if not market_trends.get("error"):
             market_data.update(market_trends)
+            
+            # Add historical data if available
+            if 'market_data' in market_trends and 'historical_data' in market_trends['market_data']:
+                market_data['historical_data'] = market_trends['market_data']['historical_data']
+                logger.debug(f"PRICE_TREND_FIX: Added historical_data to market_data for analysis endpoint property {property_id}")
+                logger.debug(f"PRICE_TREND_FIX: Historical data keys: {list(market_trends['market_data']['historical_data'].keys())}")
+            else:
+                logger.debug(f"PRICE_TREND_FIX: No historical data available for analysis endpoint property {property_id}")
+                logger.debug(f"PRICE_TREND_FIX: market_trends keys: {list(market_trends.keys()) if market_trends else 'None'}")
+                if 'market_data' in market_trends:
+                    logger.debug(f"PRICE_TREND_FIX: market_data keys: {list(market_trends['market_data'].keys())}")
             
         # Transform property data to include all required fields (bedrooms, bathrooms, lot_size, zip_code, etc.)
         transformed_property = transform_property_data(property_data)

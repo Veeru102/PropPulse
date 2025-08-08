@@ -625,8 +625,22 @@ class MarketDataService:
             # Calculate long-term trend (last 12 months)
             long_term_trend = self._calculate_trend(price_values[-12:]) if len(price_values) >= 12 else 0
             
-            # Calculate year-over-year change
-            yoy_change = ((price_values[-1] - price_values[-12]) / price_values[-12] * 100) if len(price_values) >= 12 else 0
+            # Calculate year-over-year change with realistic bounds
+            if len(price_values) >= 12:
+                raw_yoy = ((price_values[-1] - price_values[-12]) / price_values[-12] * 100)
+                # Apply same dampening logic as _calculate_trend
+                if abs(raw_yoy) <= 5:
+                    yoy_change = raw_yoy
+                elif abs(raw_yoy) <= 10:
+                    yoy_change = raw_yoy * 0.8
+                elif abs(raw_yoy) <= 20:
+                    yoy_change = raw_yoy * 0.6
+                else:
+                    yoy_change = raw_yoy * 0.4
+                # Clip to realistic bounds
+                yoy_change = max(-15.0, min(15.0, yoy_change))
+            else:
+                yoy_change = 0
             
             # Determine trend strength
             trend_strength = self._determine_trend_strength(short_term_trend, medium_term_trend, long_term_trend)
@@ -862,10 +876,30 @@ class MarketDataService:
             }
 
     def _calculate_trend(self, data: List[float]) -> float:
-        """Calculate trend percentage over a period."""
+        """Calculate trend percentage over a period with realistic bounds."""
         if len(data) < 2:
             return 0
-        return ((data[-1] - data[0]) / data[0]) * 100
+        
+        # Calculate raw percentage change
+        raw_change = ((data[-1] - data[0]) / data[0]) * 100
+        
+        # Apply dampening to extreme values to keep within realistic real estate ranges
+        # Most real estate markets don't see sustained trends beyond ±15% annually
+        if abs(raw_change) <= 5:
+            # No dampening for small changes (common market movements)
+            dampened_change = raw_change
+        elif abs(raw_change) <= 10:
+            # Moderate dampening for medium changes
+            dampened_change = raw_change * 0.8
+        elif abs(raw_change) <= 20:
+            # Progressive dampening for larger changes
+            dampened_change = raw_change * 0.6
+        else:
+            # Strong dampening for extreme changes
+            dampened_change = raw_change * 0.4
+        
+        # Clip to realistic bounds (±15% for any trend period)
+        return max(-15.0, min(15.0, dampened_change))
 
     def _calculate_trend_strength(self, prices: List[float]) -> str:
         """Calculate the strength of the price trend."""

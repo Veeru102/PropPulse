@@ -133,8 +133,20 @@ const MLAnalysis: React.FC<MLAnalysisProps> = ({ property }) => {
 
   // Render a colored progress bar with the numeric value shown for clarity and tooltip
   const renderProgressBar = (value: number, invert: boolean = false, tooltipText?: string) => {
-    // Scale the value to a percentage (0-100)
-    const scaledValue = Math.max(0, Math.min(100, value * 100));
+    // For price trend, the value is already normalized to [-1, 1] where 1 represents 20% change
+    // For other metrics, the value is in [0, 1] range
+    const isPriceTrend = tooltipText?.includes('Price Trend Assessment');
+    let scaledValue;
+    if (isPriceTrend) {
+      // Convert normalized [-1, 1] range to actual percentage (-15% to +15%)
+      // Add logging to debug the scaling
+      console.log('Price trend value before scaling:', value);
+      scaledValue = value * 15; // Scale to ±15% range
+      console.log('Price trend value after scaling:', scaledValue);
+    } else {
+      // Regular 0-100 percentage for other metrics
+      scaledValue = Math.max(0, Math.min(100, value * 100));
+    }
     const pct = invert ? (100 - scaledValue) / 100 : scaledValue / 100;
 
     const getBarColor = (percentage: number, inverted: boolean) => {
@@ -200,9 +212,9 @@ const MLAnalysis: React.FC<MLAnalysisProps> = ({ property }) => {
             }}
           ></div>
         </div>
-        <span className="text-xs text-white whitespace-nowrap" style={{minWidth:'50px'}}>
-          {scaledValue.toFixed(2)}%
-        </span>
+                  <span className="text-xs text-white whitespace-nowrap" style={{minWidth:'50px'}}>
+            {isPriceTrend ? (scaledValue >= 0 ? '+' : '') + scaledValue.toFixed(1) + '%' : scaledValue.toFixed(1) + '%'}
+          </span>
         {tooltipText && (
           <div className="absolute left-0 bottom-full mb-2 w-80 p-3 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20 pointer-events-none">
             <div className="whitespace-pre-line">{tooltipText}</div>
@@ -568,9 +580,13 @@ const MLAnalysis: React.FC<MLAnalysisProps> = ({ property }) => {
       overall_health: getOverallHealth(marketHealth),
       price_momentum: typeof marketMomentum === 'number' ? marketMomentum : 'N/A',
     };
+    // Debug logging to see what's in market_metrics
+    console.log('Debug: market_metrics object:', market_metrics);
+    console.log('Debug: market_metrics.price_trend:', (market_metrics as any)?.price_trend);
+    
     const transformedPriceTrends = {
-      short_term_trend: typeof marketMomentum === 'number' ? marketMomentum * 100 : 'N/A',
-      yoy_change: typeof marketMomentum === 'number' ? marketMomentum * 100 : 'N/A',
+      short_term_trend: typeof (market_metrics as any)?.price_trend === 'number' ? (market_metrics as any).price_trend * 100 : 'N/A',
+      yoy_change: typeof (market_metrics as any)?.price_trend === 'number' ? (market_metrics as any).price_trend * 100 : 'N/A',
     };
     const transformedVolatility = {
       volatility_level: getVolatilityLevel(marketStability),
