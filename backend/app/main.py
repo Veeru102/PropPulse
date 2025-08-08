@@ -19,22 +19,11 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://proppulse.netlify.app",
-        "http://proppulse.netlify.app",
-        "https://www.proppulse.netlify.app", 
-        "http://www.proppulse.netlify.app",
-        "https://proppulse-hmgf.onrender.com",
-        "http://localhost:3000", # For local frontend development
-        "http://localhost:8000", # For local backend development
-    ],
-    allow_origin_regex=r"https://.*\.netlify\.app$",  
+    allow_origin_regex=r"^https?:\/\/(www\.)?proppulse\.netlify\.app|https?:\/\/proppulse-hmgf\.onrender\.com|http:\/\/localhost:(3000|8000)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-logger.info(f"CORS origins configured: {app.middleware.args[0][1].allow_origins}")
 
 # Include routers
 app.include_router(properties.router, prefix="/api/v1", tags=["properties"])
