@@ -77,53 +77,7 @@ proppulse/
 __   └── public/      # Static assets
 ```
 
-## Setup Instructions
 
-### Backend Setup
-1. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-2. Install dependencies:
-   ```bash
-   cd backend
-   pip install -r requirements.txt
-   ```
-
-3. Set up environment variables:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your API keys
-   ```
-
-4. Run the development server:
-   ```bash
-   uvicorn app.main:app --reload
-   ```
-
-### Frontend Setup
-1. Install dependencies:
-   ```bash
-   cd frontend
-   npm install
-   ```
-
-2. Set up environment variables:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your API keys
-   ```
-
-3. Run the development server:
-   ```bash
-   npm run dev
-   ```
-
-## API Documentation
-
-Once the backend is running, visit `http://localhost:8000/docs` for the interactive API documentation.
 
 ## Web Application Pages Overview
 
@@ -143,7 +97,3 @@ PropPulse features a intuitive web interface with the following main sections:
 3. Commit your changes
 4. Push to the branch
 5. Create a Pull Request
-
-## License
-
-MIT License - see LICENSE file for details 
