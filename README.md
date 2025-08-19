@@ -63,7 +63,6 @@ proppulse/
 │   │       ├── openai_service.py       # Integrates with OpenAI API for AI analysis
 │   │       ├── property_analyzer.py    # Main logic for property investment analysis
 │   │       ├── realtor_api.py          # Handles communication with Realtor.com API
-│   │       ├── robust_feature_extractor.py # Extracts robust features for ML models
 │   │       ├── service_manager.py      # Manages initialization and access to services
 │   │       └── training_data_generator.py # Generates data for model training
 │   │       └── training_inference_auditor.py # Audits ML model training and inference
@@ -71,12 +70,11 @@ proppulse/
 ├── frontend/         # React frontend application
 │   ├── src/
 │   │   ├── components/  # Reusable UI components
-│   │   │   ├── features/ # Feature-specific components (e.g., InvestmentScoreDial)
-│   │   ├── pages/       # Main application pages (e.g., Home, PropertySearch, MarketAnalysis, ComparativeAnalysis, CompareMarkets, PropertyDetails)
+│   │   │   ├── features/ # Feature-specific components (ex. InvestmentScoreDial)
+│   │   ├── pages/       # Main application pages (ex. Home, PropertySearch, MarketAnalysis, ComparativeAnalysis, CompareMarkets, PropertyDetails)
 │   │   ├── services/    # Frontend services for API interaction
 │   │   └── styles/      # TailwindCSS configurations and other styles
-│   └── public/      # Static assets
-└── docs/            # Documentation (if any)
+__   └── public/      # Static assets
 ```
 
 ## Setup Instructions
