@@ -4,12 +4,16 @@ PropPulse is an advanced real estate intelligence platform that leverages AI and
 
 ## Features
 
-- Real-time property listings from Realtor.com API
-- AI-powered investment analysis using GPT-4
-- Machine learning models for ROI prediction
-- Interactive map visualization with Mapbox
-- Property comparison and market trend analysis
-- Investment scoring and rationale generation
+PropPulse provides a comprehensive suite of features designed to empower real estate investors, agents, and homebuyers:
+
+- **Real-time Property Data Integration:** Fetches and processes real-time property listings from various sources, including Realtor.com API.
+- **AI-Powered Investment Analysis:** Utilizes advanced AI (including GPT-4 via OpenAI API) to provide deep investment insights, identify opportunities, and generate clear rationales.
+- **Machine Learning for Predictive Analytics:** Employs sophisticated ML models (XGBoost/LightGBM) to predict property values and potential return on investment (ROI).
+- **Interactive Data Visualization:** Offers interactive map visualizations (using Mapbox GL JS) and dynamic charts to explore property data and market trends.
+- **Comprehensive Market Analysis:** Provides detailed insights into real estate markets, including historical trends, supply-demand dynamics, and key performance indicators.
+- **Property Comparison Tools:** Allows users to compare multiple properties side-by-side based on various metrics and analytical scores, leveraging FAISS for efficient similarity search.
+- **Investment Scoring & Risk Assessment:** Generates proprietary investment scores and assesses potential risks associated with properties and markets.
+- **Data Pipeline:** Incorporates services for data collection, quality validation, feature extraction, and training/auditing of ML models to ensure data integrity and model accuracy.
 
 ## Tech Stack
 
@@ -34,21 +38,45 @@ PropPulse is an advanced real estate intelligence platform that leverages AI and
 
 ```
 proppulse/
-├── backend/           # FastAPI backend
+├── backend/           # FastAPI backend application
 │   ├── app/
-│   │   ├── api/      # API endpoints
-│   │   ├── models/   # ML models
-│   │   ├── services/ # Business logic
-│   │   └── utils/    # Helper functions
-│   └── tests/        # Backend tests
-├── frontend/         # React frontend
+│   │   ├── api/      # API endpoints and route definitions
+│   │   │   ├── endpoints/ # Specific API endpoints (e.g., ml_analysis)
+│   │   │   └── routes/    # Main API routes (e.g., properties, analyze)
+│   │   ├── core/     # Core configurations, utilities, and settings
+│   │   ├── data/     # Data storage and processing utilities
+│   │   ├── ml_models/ # Machine learning model artifacts and utilities
+│   │   ├── models/   # Database models and Pydantic schemas
+│   │   ├── schemas/  # Pydantic schemas for request/response validation
+│   │   ├── scripts/  # Backend-related scripts (e.g., data download, model training)
+│   │   └── services/ # Core business logic, data processing, and external API integrations
+│   │       ├── comparable_property_service.py # Logic for finding comparable properties
+│   │       ├── data_collector.py       # Collects raw property data
+│   │       ├── data_quality_auditor.py # Audits data for quality issues
+│   │       ├── data_quality_validator.py # Validates incoming data
+│   │       ├── enhanced_label_generator.py # Generates enhanced labels for ML training
+│   │       ├── enhanced_model_trainer.py # Manages enhanced ML model training
+│   │       ├── input_data_validator.py # Validates input data for analysis
+│   │       ├── market_data_service.py  # Fetches and processes market trend data
+│   │       ├── ml_predictor.py         # Handles ML model predictions
+│   │       ├── model_trainer.py        # Core ML model training logic
+│   │       ├── openai_service.py       # Integrates with OpenAI API for AI analysis
+│   │       ├── property_analyzer.py    # Main logic for property investment analysis
+│   │       ├── realtor_api.py          # Handles communication with Realtor.com API
+│   │       ├── robust_feature_extractor.py # Extracts robust features for ML models
+│   │       ├── service_manager.py      # Manages initialization and access to services
+│   │       └── training_data_generator.py # Generates data for model training
+│   │       └── training_inference_auditor.py # Audits ML model training and inference
+│   ├── tests/        # Backend tests
+├── frontend/         # React frontend application
 │   ├── src/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   ├── services/
-│   │   └── utils/
-│   └── public/
-└── docs/            # Documentation
+│   │   ├── components/  # Reusable UI components
+│   │   │   ├── features/ # Feature-specific components (e.g., InvestmentScoreDial)
+│   │   ├── pages/       # Main application pages (e.g., Home, PropertySearch, MarketAnalysis, ComparativeAnalysis, CompareMarkets, PropertyDetails)
+│   │   ├── services/    # Frontend services for API interaction
+│   │   └── styles/      # TailwindCSS configurations and other styles
+│   └── public/      # Static assets
+└── docs/            # Documentation (if any)
 ```
 
 ## Setup Instructions
@@ -98,6 +126,17 @@ proppulse/
 ## API Documentation
 
 Once the backend is running, visit `http://localhost:8000/docs` for the interactive API documentation.
+
+## Web Application Pages Overview
+
+PropPulse features a intuitive web interface with the following main sections:
+
+- **Home Page (`/`):** A welcoming landing page introducing PropPulse's capabilities and value proposition.
+- **Property Search (`/search`):** Allows users to search for properties based on various criteria, view listings, and access detailed property information.
+- **Property Details (`/property/:id`):** Displays comprehensive details for a selected property, including analytical insights, investment scores, and comparable properties.
+- **Market Analysis (`/market-analysis`):** Provides in-depth analysis of real estate markets, showcasing trends, statistics, and key indicators to help users understand market dynamics.
+- **Comparative Analysis (`/comparative-analysis`):** Enables users to compare multiple properties side-by-side, highlighting differences and similarities to aid in decision-making.
+- **Compare Markets (`/compare-markets`):** Allows users to compare different real estate markets to identify investment opportunities or relocation insights.
 
 ## Contributing
 
