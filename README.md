@@ -4,14 +4,14 @@ PropPulse is an advanced real estate intelligence platform that leverages AI and
 
 ## Features
 
-PropPulse provides a comprehensive suite of features designed to empower real estate investors, agents, and homebuyers:
+PropPulse provides a several features created to empower real estate investors, agents, and homebuyers:
 
 - **Real-time Property Data Integration:** Fetches and processes real-time property listings from various sources, including Realtor.com API.
-- **AI-Powered Investment Analysis:** Utilizes advanced AI (including GPT-4 via OpenAI API) to provide deep investment insights, identify opportunities, and generate clear rationales.
-- **Machine Learning for Predictive Analytics:** Employs sophisticated ML models (XGBoost/LightGBM) to predict property values and potential return on investment (ROI).
+- **Property Comparison Tools:** Allows users to compare multiple properties side-by-side based on various metrics and analytical scores, leveraging FAISS for efficient similarity search.
+- **Machine Learning for Predictive Analytics:** Employs ML models (XGBoost/LightGBM) to predict property values and potential return on investment (ROI).
+- **AI-Powered Investment Analysis:** Utilizes AI (GPT-4o via OpenAI API) to provide deep investment insights, identify opportunities, and generate clear rationales.
 - **Interactive Data Visualization:** Offers interactive map visualizations (using Mapbox GL JS) and dynamic charts to explore property data and market trends.
 - **Comprehensive Market Analysis:** Provides detailed insights into real estate markets, including historical trends, supply-demand dynamics, and key performance indicators.
-- **Property Comparison Tools:** Allows users to compare multiple properties side-by-side based on various metrics and analytical scores, leveraging FAISS for efficient similarity search.
 - **Investment Scoring & Risk Assessment:** Generates proprietary investment scores and assesses potential risks associated with properties and markets.
 - **Data Pipeline:** Incorporates services for data collection, quality validation, feature extraction, and training/auditing of ML models to ensure data integrity and model accuracy.
 
